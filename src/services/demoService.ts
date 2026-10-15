@@ -13,6 +13,7 @@ const DEMO_TABLES: StoreTableName[] = [
   'recurringRules',
   'accounts',
   'importBatches',
+  'importProfiles',
   'categorisationRules',
   'projects',
   'invoices',
@@ -264,8 +265,21 @@ export async function clearDemoData(store: FinanceStore): Promise<number> {
   let removed = 0;
   await store.atomic(async () => {
     for (const name of DEMO_TABLES) {
-      const rows = (await store[name].list()) as { id: string; isDemo: boolean }[];
-      const ids = rows.filter((r) => r.isDemo).map((r) => r.id);
+      const rows = (await store[name].list()) as {
+        id: string;
+        isDemo: boolean;
+        accountId?: string;
+      }[];
+      // Import history and saved mappings for demo accounts go too (they hold no transactions).
+      const ids = rows
+        .filter(
+          (r) =>
+            r.isDemo ||
+            ((name === 'importBatches' || name === 'importProfiles') &&
+              r.accountId !== undefined &&
+              demoAccounts.has(r.accountId)),
+        )
+        .map((r) => r.id);
       await store[name].bulkDelete(ids);
       removed += ids.length;
     }

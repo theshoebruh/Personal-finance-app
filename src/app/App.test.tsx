@@ -40,7 +40,7 @@ describe('core flow', () => {
   });
 
   it('adds an account, then a transaction, and the dashboard recalculates', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const { unmount } = render(<App db={db} store={store} initialPath="/accounts" />);
     await user.click(await screen.findByRole('button', { name: 'Add account' }));
     const form = screen.getByRole('form', { name: 'Add account' });
@@ -53,10 +53,10 @@ describe('core flow', () => {
     const tx = render(<App db={db} store={store} initialPath="/transactions?new=1" />);
     const txForm = await screen.findByRole('form', { name: 'Add transaction' });
     await user.type(within(txForm).getByLabelText('Amount (R)'), '1250.50');
-    await user.type(within(txForm).getByLabelText('Description'), 'Groceries');
+    await user.type(within(txForm).getByLabelText('Description'), 'Weekly shop at Checkers');
     await user.selectOptions(within(txForm).getByLabelText('Account'), 'Capitec main');
     await user.click(within(txForm).getByRole('button', { name: 'Add transaction' }));
-    expect(await screen.findByText('Groceries')).toBeInTheDocument();
+    expect(await screen.findByText('Weekly shop at Checkers')).toBeInTheDocument();
     tx.unmount();
 
     render(<App db={db} store={store} initialPath="/" />);
@@ -64,7 +64,7 @@ describe('core flow', () => {
   });
 
   it('validates the transaction form before saving', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await store.accounts.put({
       id: 'a1',
       name: 'Main',
@@ -89,7 +89,7 @@ describe('core flow', () => {
   });
 
   it('deducts an upcoming commitment until it is marked paid', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const today = todayInAppZone();
     await store.accounts.put({
       id: 'a1',

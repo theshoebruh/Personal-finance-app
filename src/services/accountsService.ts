@@ -80,5 +80,10 @@ export async function deleteAccount(store: FinanceStore, id: string): Promise<vo
   if (goals.length > 0) {
     throw new DomainError('A savings goal is linked to this account. Unlink it first.');
   }
-  await store.accounts.delete(id);
+  await store.atomic(async () => {
+    const batches = (await store.importBatches.list()).filter((b) => b.accountId === id);
+    await store.importBatches.bulkDelete(batches.map((b) => b.id));
+    await store.importProfiles.delete(id);
+    await store.accounts.delete(id);
+  });
 }

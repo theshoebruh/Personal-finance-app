@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isIsoDate } from '../dates';
+import { columnMappingSchema } from '../imports/normalise';
 
 /*
  * Domain entities and their runtime validation schemas.
@@ -319,9 +320,26 @@ export const importBatchSchema = z.object({
   transactionCount: z.number().int().min(0),
   errorCount: z.number().int().min(0),
   status: z.enum(['committed', 'undone']),
+  /** Rows the user left out (duplicates or unticked). */
+  skippedCount: z.number().int().min(0).optional(),
+  dateFrom: isoDate.optional(),
+  dateTo: isoDate.optional(),
+  undoneAt: timestamp.optional(),
   ...recordMeta,
 });
 export type ImportBatch = z.infer<typeof importBatchSchema>;
+
+/** Saved CSV column mapping, one per account, so the next statement imports in one step. */
+export const importProfileSchema = z.object({
+  /** Same as the account ID. */
+  id,
+  accountId: id,
+  mapping: columnMappingSchema,
+  /** Normalised header row, to notice when a bank changes its export format. */
+  headerSignature: z.string().max(2000).optional(),
+  ...recordMeta,
+});
+export type ImportProfile = z.infer<typeof importProfileSchema>;
 
 export const categorisationRuleSchema = z.object({
   id,

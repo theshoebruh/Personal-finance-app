@@ -25,32 +25,40 @@ Vitest 4 + React Testing Library. No charting library has been added yet.
 
 ## Phase 1 — Domain model and local persistence
 
-| Item                                      | Status | Notes                                                                                                                    |
-| ----------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
-| Entities + runtime validation             | ✅     | All §8.3 entities have Zod schemas. Invoice, Project, ImportBatch and CategorisationRule tables exist but have no UI yet |
-| IndexedDB schema + migrations             | ✅     | `SCHEMA_VERSIONS`. Test shows an upgrade keeps existing data                                                             |
-| Repository interfaces                     | ✅     | `FinanceStore`; Dexie implementation validates every write                                                               |
-| Personal/Business workspaces, accounts    | ✅     | Workspaces are a fixed pair (personal, business) plus a Combined view, not user-created records                          |
-| Data persists across reloads              | ✅     | Tested by reopening the database                                                                                         |
-| Backup export / restore (merge + replace) | ✅     | Restoring twice creates no duplicates; invalid files are rejected without changes                                        |
-| Demo data separated + clearable           | ✅     | `isDemo` flag and "Demo ·" names. Clearing refuses if real records depend on demo ones                                   |
-| Delete all data                           | ✅     | Confirmed by typing DELETE                                                                                               |
+| Item                                      | Status | Notes                                                                                                       |
+| ----------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| Entities + runtime validation             | ✅     | All §8.3 entities have Zod schemas. Invoice, Project and CategorisationRule tables exist but have no UI yet |
+| IndexedDB schema + migrations             | ✅     | `SCHEMA_VERSIONS`. Test shows an upgrade keeps existing data                                                |
+| Repository interfaces                     | ✅     | `FinanceStore`; Dexie implementation validates every write                                                  |
+| Personal/Business workspaces, accounts    | ✅     | Workspaces are a fixed pair (personal, business) plus a Combined view, not user-created records             |
+| Data persists across reloads              | ✅     | Tested by reopening the database                                                                            |
+| Backup export / restore (merge + replace) | ✅     | Restoring twice creates no duplicates; invalid files are rejected without changes                           |
+| Demo data separated + clearable           | ✅     | `isDemo` flag and "Demo ·" names. Clearing refuses if real records depend on demo ones                      |
+| Delete all data                           | ✅     | Confirmed by typing DELETE                                                                                  |
 
 ## Phase 2 — Transactions and import
 
-| Item                                                                      | Status | Notes                                                                       |
-| ------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------- |
-| Manual add/edit/archive/delete                                            | ✅     | Hard delete only for manual entries; imported entries can only be archived  |
-| Search, filter (date/account/category/workspace/type/status/source), sort | ✅     |                                                                             |
-| Bulk category assignment                                                  | ✅     | Also clears "needs review"                                                  |
-| Transfers as linked legs; owner contribution/draw                         | ✅     | Edited and deleted as a pair                                                |
-| Preserve original description, source, last update                        | 🟡     | Fields exist and edits keep them; nothing writes them until import is built |
-| CSV/Excel import with staging review                                      | ⬜     | **Next**                                                                    |
-| Duplicate detection (fingerprint)                                         | ⬜     | `fingerprint` field and index exist                                         |
-| PDF import                                                                | ⬜     | Only if a reliable parser can be validated                                  |
-| Categorisation rules + learned corrections                                | ⬜     | Table exists                                                                |
-| Import history + undo                                                     | ⬜     | Table exists                                                                |
-| Split transactions                                                        | ⬜     |                                                                             |
+| Item                                                                      | Status | Notes                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Manual add/edit/archive/delete                                            | ✅     | Hard delete only for manual entries; imported entries can be archived or removed by undoing their import                                                                                                                            |
+| Search, filter (date/account/category/workspace/type/status/source), sort | ✅     |                                                                                                                                                                                                                                     |
+| Bulk category assignment                                                  | ✅     | Also clears "needs review"                                                                                                                                                                                                          |
+| Transfers as linked legs; owner contribution/draw                         | ✅     | Edited and deleted as a pair                                                                                                                                                                                                        |
+| Preserve original description, source, last update                        | ✅     | Imports store the original row text, source `csv`, fingerprint and import batch                                                                                                                                                     |
+| CSV import with staging review                                            | ✅     | `/import`: account + file → column mapping with preview → review → confirm. PapaParse; handles BOM, `,` `;` tab `                                                                                                                   | ` delimiters, quotes |
+| Excel files                                                               | 🟡     | CSV saved from Excel works. `.xlsx` files are rejected with instructions to save as “CSV UTF-8” (no spreadsheet parser added yet)                                                                                                   |
+| Column mapping saved per account                                          | ✅     | Reused when the header row matches; re-guessed with a warning when the bank's format changes                                                                                                                                        |
+| Date/amount normalisation                                                 | ✅     | Y-M-D, D/M/Y, M/D/Y, “15 Mar 2026”; signed or debit/credit columns; CR/DR markers; optional sign flip. Ambiguous D/M vs M/D is flagged (D/M/Y assumed)                                                                              |
+| Invalid rows shown, never imported                                        | ✅     | Unreadable dates/amounts are listed with the reason                                                                                                                                                                                 |
+| Duplicate detection (fingerprint)                                         | ✅     | Account + date + amount + normalised description (+ bank reference when mapped). Counted per fingerprint, so re-importing or overlapping statements don't duplicate, while identical same-day rows in one file are kept and flagged |
+| Possible duplicates of manual entries                                     | ✅     | Same amount within ±3 days of a manual entry → unticked by default, shown with the matching entry                                                                                                                                   |
+| Running-balance check + closing balance                                   | ✅     | Advisory: detects row order, suggests a sign flip, and can record the closing balance as the account's reconciliation check                                                                                                         |
+| Import history + undo                                                     | ✅     | Undo removes that batch's transactions (warns if any were edited) and keeps the batch as "Undone"                                                                                                                                   |
+| Schema migration                                                          | ✅     | v2 adds `importProfiles`; tested from a v1 database. Older backups without it still restore                                                                                                                                         |
+| Transfer suggestions for imported rows                                    | ⬜     | Imported transfers to savings currently arrive as income/expense; re-record as a transfer (planned with categorisation rules)                                                                                                       |
+| PDF import                                                                | ⬜     | Only if a reliable parser can be validated                                                                                                                                                                                          |
+| Categorisation rules + learned corrections                                | ⬜     | **Next**. Imported rows arrive uncategorised and "Needs review"                                                                                                                                                                     |
+| Split transactions                                                        | ⬜     |                                                                                                                                                                                                                                     |
 
 ## Phase 3 — Budget engine and dashboard
 
@@ -126,14 +134,20 @@ in the UI.
 12. **Workspaces** are the fixed pair Personal/Business rather than user-created records.
 13. **Combined view** shows both workspaces' spendable cash; the salary savings target applies to
     the Personal and Combined views, not Business.
+14. **Imported rows** start uncategorised with status "Needs review" (they still count toward the
+    balance). Positive amounts become income, negative ones expenses; nothing is auto-classified as
+    a transfer or refund yet.
+15. **Import duplicates** that exactly match an existing transaction, and likely matches of manual
+    entries, are **unticked by default** but always shown, so the user decides. Undoing an import
+    deletes its transactions (they are recreated by importing again).
+16. **Imports into demo accounts** are treated as demo data, so "Clear demo data" removes them.
 
 ## Next steps (proposed order)
 
-1. CSV import: account + file → parse → staging review (date range, counts, invalid rows) →
-   normalise → fingerprint duplicate check (flag, don't drop, identical same-day items) → confirm →
-   import batch with undo.
-2. Categorisation rules: user rules → learned merchant mappings → heuristics → review, with
-   "this transaction only / remember".
-3. CSV export with formula-injection escaping.
-4. Invoices/receivables and projects; then charts and the what-if calculator.
-5. Persistent alert dismissal/preferences; Playwright end-to-end tests; real-device PWA checks.
+1. Categorisation rules: user rules → learned merchant mappings → heuristics → review, with
+   "this transaction only / remember"; apply suggestions during import. Include transfer
+   suggestions (matching in/out amounts across own accounts).
+2. CSV export with formula-injection escaping.
+3. Invoices/receivables and projects; then charts and the what-if calculator.
+4. Persistent alert dismissal/preferences; Playwright end-to-end tests; real-device PWA checks.
+5. PDF statement import only if a parser proves reliable on real statements (with mandatory review).

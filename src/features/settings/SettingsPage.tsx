@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useApp, useFinanceData, type FinanceData } from '@/app/AppContext';
 import { budgetableIncome, savingsRateWarning, savingsTarget } from '@/domain/calculations/income';
@@ -13,7 +14,16 @@ import {
   restoreBackup,
 } from '@/services/backupService';
 import { clearDemoData, hasDemoData, loadDemoData } from '@/services/demoService';
-import { Alert, Card, DateText, Field, Loading, Money, useStatus } from '@/components/ui';
+import {
+  Alert,
+  Card,
+  DateText,
+  Field,
+  Loading,
+  Money,
+  readFileText,
+  useStatus,
+} from '@/components/ui';
 
 function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) => void }) {
   const { store, today } = useApp();
@@ -302,7 +312,7 @@ function DataManagement() {
       setStatus({ tone: 'negative', text: 'That file is too large to be a backup from this app.' });
       return;
     }
-    await run(async () => setPending(parseBackup(await file.text())));
+    await run(async () => setPending(parseBackup(await readFileText(file))));
     if (fileRef.current) fileRef.current.value = '';
   }
 
@@ -496,7 +506,7 @@ export function SettingsPage() {
   return (
     <>
       <div className="topbar">
-        <h1>Settings &amp; import</h1>
+        <h1>Settings</h1>
       </div>
       <div className="grid">
         <Card title="Budget settings">
@@ -507,11 +517,14 @@ export function SettingsPage() {
           />
         </Card>
         <Card title="Import transactions">
-          <Alert tone="info">
-            Statement import (CSV / Excel-compatible, then PDF where it can be read reliably) is the
-            next feature being built. Until then, add transactions manually on the Transactions
-            page.
-          </Alert>
+          <p className="small">
+            Import a CSV statement (or an Excel sheet saved as CSV). You review every row before
+            anything is saved, duplicates are flagged, and each import can be undone. PDF import is
+            not supported yet.
+          </p>
+          <Link className="btn btn-primary" to="/import">
+            Import a statement
+          </Link>
         </Card>
         <Card title="Bank connections">
           <p className="small">

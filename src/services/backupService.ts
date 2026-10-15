@@ -7,6 +7,7 @@ import {
   categorySchema,
   goalContributionSchema,
   importBatchSchema,
+  importProfileSchema,
   invoiceSchema,
   projectSchema,
   recurringRuleSchema,
@@ -29,6 +30,8 @@ const tables = {
   goalContributions: z.array(goalContributionSchema),
   recurringRules: z.array(recurringRuleSchema),
   importBatches: z.array(importBatchSchema),
+  // Added in schema v2; older backups without it restore with no saved mappings.
+  importProfiles: z.array(importProfileSchema).default([]),
   categorisationRules: z.array(categorisationRuleSchema),
   projects: z.array(projectSchema),
   invoices: z.array(invoiceSchema),

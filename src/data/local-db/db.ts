@@ -7,6 +7,7 @@ import type {
   Category,
   GoalContribution,
   ImportBatch,
+  ImportProfile,
   Invoice,
   Project,
   RecurringRule,
@@ -44,6 +45,11 @@ export const SCHEMA_VERSIONS: ReadonlyArray<{
       settings: 'id',
     },
   },
+  {
+    // v2: saved CSV column mappings per account. Existing data is untouched.
+    version: 2,
+    stores: { importProfiles: 'id, accountId' },
+  },
 ];
 
 export class FinanceDb extends Dexie {
@@ -55,6 +61,7 @@ export class FinanceDb extends Dexie {
   goalContributions!: Table<GoalContribution, string>;
   recurringRules!: Table<RecurringRule, string>;
   importBatches!: Table<ImportBatch, string>;
+  importProfiles!: Table<ImportProfile, string>;
   categorisationRules!: Table<CategorisationRule, string>;
   projects!: Table<Project, string>;
   invoices!: Table<Invoice, string>;
@@ -79,6 +86,7 @@ export const DATA_TABLES = [
   'goalContributions',
   'recurringRules',
   'importBatches',
+  'importProfiles',
   'categorisationRules',
   'projects',
   'invoices',

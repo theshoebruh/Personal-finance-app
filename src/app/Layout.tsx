@@ -10,12 +10,13 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: '◎' },
   { to: '/transactions', label: 'Transactions', icon: '≡' },
+  { to: '/import', label: 'Import statement', icon: '⇩' },
   { to: '/budgets', label: 'Budgets', icon: '▤' },
   { to: '/goals', label: 'Goals', icon: '◆' },
   { to: '/accounts', label: 'Accounts', icon: '▣' },
   { to: '/business', label: 'Business', icon: '◧' },
   { to: '/reports', label: 'Reports', icon: '▥' },
-  { to: '/settings', label: 'Settings & import', icon: '⚙' },
+  { to: '/settings', label: 'Settings', icon: '⚙' },
 ];
 
 /** Shown directly in the mobile bottom bar; the rest live under "More". */

@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { useState, type FormEvent } from 'react';
 import { useApp, useFinanceData } from '@/app/AppContext';
 import {
@@ -302,8 +303,9 @@ export function AccountsPage() {
 
       <Alert tone="info">
         Balances are <strong>calculated</strong> from the opening balance plus transactions recorded
-        in this app. No bank connection is used — add transactions manually (statement import is
-        coming next). Check them against your bank with the reconciliation fields.
+        in this app. No bank connection is used — add transactions manually or{' '}
+        <Link to="/import">import a CSV statement</Link>. Check them against your bank with the
+        reconciliation fields.
       </Alert>
 
       {editing && (

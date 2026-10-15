@@ -6,6 +6,7 @@ import type {
   Category,
   GoalContribution,
   ImportBatch,
+  ImportProfile,
   Invoice,
   Project,
   RecurringRule,
@@ -33,6 +34,7 @@ export interface FinanceStore {
   transactions: EntityRepository<Transaction> & {
     byAccount(accountId: string): Promise<Transaction[]>;
     byTransferId(transferId: string): Promise<Transaction[]>;
+    byImportBatch(importBatchId: string): Promise<Transaction[]>;
   };
   categories: EntityRepository<Category>;
   budgets: EntityRepository<Budget>;
@@ -40,6 +42,7 @@ export interface FinanceStore {
   goalContributions: EntityRepository<GoalContribution>;
   recurringRules: EntityRepository<RecurringRule>;
   importBatches: EntityRepository<ImportBatch>;
+  importProfiles: EntityRepository<ImportProfile>;
   categorisationRules: EntityRepository<CategorisationRule>;
   projects: EntityRepository<Project>;
   invoices: EntityRepository<Invoice>;

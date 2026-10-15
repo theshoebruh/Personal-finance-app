@@ -197,3 +197,13 @@ export function ProgressBar({ value, max, label }: { value: number; max: number;
     <progress value={Math.min(Math.max(0, value), safeMax)} max={safeMax} aria-label={label} />
   );
 }
+
+/** Read a picked file as UTF-8 text (FileReader works in older Safari and in tests). */
+export function readFileText(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(new Error('The file could not be read.'));
+    reader.readAsText(file, 'utf-8');
+  });
+}

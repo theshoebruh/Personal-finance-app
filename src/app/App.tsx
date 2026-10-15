@@ -11,6 +11,7 @@ import { GoalsPage } from '@/features/goals/GoalsPage';
 import { BusinessPage } from '@/features/business/BusinessPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
+import { ImportPage } from '@/features/imports/ImportPage';
 
 function AppRoutes() {
   return (
@@ -24,6 +25,7 @@ function AppRoutes() {
         <Route path="business" element={<BusinessPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="import" element={<ImportPage />} />
         <Route path="*" element={<DashboardPage />} />
       </Route>
     </Routes>

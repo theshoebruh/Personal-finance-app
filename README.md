@@ -7,7 +7,8 @@ every figure explained.
 - Dark, responsive UI for Windows desktop and iPhone-sized screens
 - Data stays in this browser (IndexedDB). No account, no server, no bank login
 - Personal and Business workspaces, plus a Combined view
-- Works without any bank API: you enter transactions manually (statement import is next)
+- Works without any bank API: import CSV statements (reviewed before saving, undoable) or enter
+  transactions manually
 
 See [`docs/implementation-status.md`](docs/implementation-status.md) for what is built, what is
 not, and the assumptions made.
@@ -51,7 +52,8 @@ src/
   data/
     local-db/        Dexie (IndexedDB) schema and versioned migrations
     repositories/    Storage-agnostic repository interfaces + Dexie implementation (validates on write)
-  services/          Application use cases: accounts, transactions/transfers, planning, backup, demo
+  domain/imports/    CSV parsing, column mapping, date/amount normalisation, fingerprints, staging
+  services/          Application use cases: accounts, transactions/transfers, planning, import, backup, demo
   app/               App shell, routing, context, live data hook, PWA update prompt
   components/        Shared UI primitives
   features/          Pages: dashboard, transactions, accounts, budgets, goals, business, reports, settings
@@ -95,6 +97,20 @@ Safeguards against double counting:
 
 The dashboard's "How this is calculated" panel shows each of these lines with its inputs.
 
+### Importing statements
+
+**Import statement** (`/import`) reads a CSV file on the device; nothing is uploaded.
+
+1. Choose the account and the file.
+2. Check the guessed (or saved) column mapping against a preview: date, description, a signed amount
+   or separate debit/credit columns, plus optional reference and running balance.
+3. Review every row before saving. Unreadable rows are listed and never imported. Rows that match an
+   existing transaction (same account, date, amount and description, plus bank reference if mapped)
+   are unticked, as are likely matches of entries you added manually. Identical rows within one file
+   stay ticked but are flagged, because two identical purchases on one day can be genuine.
+4. Imported transactions are marked **Needs review**, keep their original row text, and can be
+   removed together with **Undo import** in the history.
+
 ## Your data: backup and limitations
 
 - Data lives only in this browser profile on this device. **It does not sync between your iPhone
@@ -113,7 +129,8 @@ The dashboard's "How this is calculated" panel shows each of these lines with it
 - No bank connection of any kind. Capitec transaction-history access via an API is unverified, and
   the app never asks for banking credentials, PINs or OTPs. It cannot read iPhone SMS or
   notifications.
-- Statement import (CSV/Excel, then PDF) is not built yet — manual entry only.
+- Statement import is CSV only. Excel workbooks must be saved as “CSV UTF-8” first; PDF statements
+  aren't supported. Imported rows arrive uncategorised (categorisation rules are next).
 - Invoices, projects, charts, CSV/Excel export, what-if scenarios, categorisation rules, split
   transactions and configurable alert preferences are not built yet.
 - Offline use relies on the service worker. It is generated and served by the production build,

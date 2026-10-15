@@ -65,7 +65,7 @@ export function DashboardPage() {
           <h2>Let's work out what is safe to spend</h2>
           <p className="muted">
             Everything is stored privately on this device. No bank login is needed — you add
-            accounts and transactions yourself (statement import is the next feature being built).
+            accounts and import CSV statements or add transactions yourself.
           </p>
           <ol className="stack">
             <li>

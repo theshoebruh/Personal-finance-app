@@ -79,6 +79,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
+    // UI integration tests drive real IndexedDB queries; allow headroom on slower machines.
+    testTimeout: 15_000,
     include: ['src/**/*.test.{ts,tsx}'],
   },
 });

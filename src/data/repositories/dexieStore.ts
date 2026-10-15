@@ -8,6 +8,7 @@ import {
   categorySchema,
   goalContributionSchema,
   importBatchSchema,
+  importProfileSchema,
   invoiceSchema,
   projectSchema,
   recurringRuleSchema,
@@ -75,6 +76,8 @@ export function createDexieStore(db: FinanceDb = getDb()): FinanceStore {
       byAccount: (accountId) => db.transactions.where('accountId').equals(accountId).toArray(),
       byTransferId: (transferId) =>
         db.transactions.where('transferId').equals(transferId).toArray(),
+      byImportBatch: (importBatchId) =>
+        db.transactions.where('importBatchId').equals(importBatchId).toArray(),
     },
     categories: repo(db.categories, categorySchema, 'category'),
     budgets: repo(db.budgets, budgetSchema, 'budget'),
@@ -82,6 +85,7 @@ export function createDexieStore(db: FinanceDb = getDb()): FinanceStore {
     goalContributions: repo(db.goalContributions, goalContributionSchema, 'goal contribution'),
     recurringRules: repo(db.recurringRules, recurringRuleSchema, 'recurring item'),
     importBatches: repo(db.importBatches, importBatchSchema, 'import batch'),
+    importProfiles: repo(db.importProfiles, importProfileSchema, 'import profile'),
     categorisationRules: repo(
       db.categorisationRules,
       categorisationRuleSchema,

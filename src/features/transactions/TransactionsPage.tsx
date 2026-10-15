@@ -184,6 +184,9 @@ export function TransactionsPage() {
           >
             Add transfer
           </button>
+          <Link className="btn" to="/import">
+            Import CSV
+          </Link>
         </div>
         <span className="small muted" aria-live="polite">
           {filtered.length} transaction{filtered.length === 1 ? '' : 's'}
