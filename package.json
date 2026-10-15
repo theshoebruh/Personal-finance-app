@@ -1,0 +1,55 @@
+{
+  "name": "personal-finance-hub",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "icons": "node scripts/generate-icons.mjs"
+  },
+  "dependencies": {
+    "dexie": "^4.4.6",
+    "dexie-react-hooks": "^1.1.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router": "^7.18.4",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/node": "^20.19.43",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "fake-indexeddb": "^6.2.5",
+    "globals": "^15.15.0",
+    "jsdom": "^25.0.1",
+    "prettier": "^3.9.10",
+    "typescript": "~5.6",
+    "typescript-eslint": "^8.71.2",
+    "vite": "^6.4.4",
+    "vite-plugin-pwa": "^0.21.2",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "overrides": {
+    "rollup": "npm:@rollup/wasm-node@^4.40.0"
+  }
+}
