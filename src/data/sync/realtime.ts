@@ -14,7 +14,9 @@ export function subscribeToChanges(
   onChange: () => void,
 ): () => void {
   let channel = client.channel(`sync-${userId}`);
-  for (const table of Object.values(REMOTE_TABLES)) {
+  // Row deletions can't be filtered by user in Realtime, so deletions are seen through the
+  // `deletions` log table instead (one row per deleted record, no content).
+  for (const table of [...Object.values(REMOTE_TABLES), 'deletions']) {
     channel = channel.on(
       'postgres_changes',
       { event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` },

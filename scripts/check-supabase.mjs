@@ -72,6 +72,7 @@ const TABLES = [
   'projects',
   'invoices',
   'settings',
+  'deletions',
 ];
 let missing = 0;
 let exposed = 0;

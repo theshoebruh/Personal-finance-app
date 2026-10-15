@@ -14,20 +14,6 @@ beforeAll(async () => {
   await push(user.client, [upsert('accounts', accountRow('acc-1'))]);
 });
 
-async function waitForEvent(subscribe: (onEvent: () => void) => Promise<void>) {
-  let got = false;
-  await subscribe(() => {
-    got = true;
-  });
-  return {
-    wait: async (ms = 6000) => {
-      const t0 = Date.now();
-      while (!got && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 200));
-      return got;
-    },
-  };
-}
-
 async function subscribed(channel: ReturnType<TestUser['client']['channel']>) {
   await new Promise<void>((resolve, reject) => {
     channel.subscribe((status, err) => {
@@ -37,29 +23,46 @@ async function subscribed(channel: ReturnType<TestUser['client']['channel']>) {
   });
 }
 
+/**
+ * Realtime can report SUBSCRIBED a little before change delivery is live (longer right after the
+ * local stack restarts), so keep writing a fresh change every 2 s until one is delivered.
+ */
+async function writeUntil(received: () => boolean, prefix: string, ms = 12_000) {
+  const t0 = Date.now();
+  let i = 0;
+  while (!received() && Date.now() - t0 < ms) {
+    await push(user.client, [upsert('transactions', txnRow(`${prefix}-${i++}`, 'acc-1'))]);
+    const tick = Date.now();
+    while (!received() && Date.now() - tick < 2000) await new Promise((r) => setTimeout(r, 100));
+  }
+  return received();
+}
+
 describe('Realtime notifications', () => {
   it('a table-specific, user-filtered subscription receives the user’s own changes only', async () => {
-    const mine = await waitForEvent(async (on) => {
-      const ch = user.client
+    let mine = false;
+    let spied = false;
+    await subscribed(
+      user.client
         .channel(`audit-mine-${Date.now()}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` },
-          on,
-        );
-      await subscribed(ch);
-    });
-    const spy = await waitForEvent(async (on) => {
-      const ch = other.client
+          () => {
+            mine = true;
+          },
+        ),
+    );
+    await subscribed(
+      other.client
         .channel(`audit-spy-${Date.now()}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, on);
-      await subscribed(ch);
-    });
-    // Realtime reports SUBSCRIBED slightly before change delivery is live.
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+          spied = true;
+        }),
+    );
+    expect(await writeUntil(() => mine, 'rt-a')).toBe(true);
     await new Promise((r) => setTimeout(r, 1500));
-    await push(user.client, [upsert('transactions', txnRow('rt-1', 'acc-1'))]);
-    expect(await mine.wait()).toBe(true);
-    expect(await spy.wait(2000)).toBe(false);
+    expect(spied).toBe(false);
   });
 
   // F-01 (fixed): the app's own subscription helper receives the user's changes.
@@ -68,32 +71,59 @@ describe('Realtime notifications', () => {
     const stop = subscribeToChanges(user.client, user.id, () => {
       got = true;
     });
-    await new Promise((r) => setTimeout(r, 1500)); // let the channel join
-    await push(user.client, [upsert('transactions', txnRow('rt-2', 'acc-1'))]);
-    const t0 = Date.now();
-    while (!got && Date.now() - t0 < 6000) await new Promise((r) => setTimeout(r, 200));
+    const ok = await writeUntil(() => got, 'rt-b');
     stop();
-    expect(got).toBe(true);
+    expect(ok).toBe(true);
+  });
+
+  it('a deletion reaches the app’s subscription through the deletions log', async () => {
+    await push(user.client, [upsert('transactions', txnRow('rt-del', 'acc-1'))]);
+    let deletionSeen = false;
+    const ch = user.client
+      .channel(`audit-del-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'deletions', filter: `user_id=eq.${user.id}` },
+        () => {
+          deletionSeen = true;
+        },
+      );
+    await subscribed(ch);
+    await new Promise((r) => setTimeout(r, 2000));
+    await push(user.client, [{ table: 'transactions', id: 'rt-del', op: 'delete', base_rev: 1 }]);
+    const t0 = Date.now();
+    while (!deletionSeen && Date.now() - t0 < 8000) await new Promise((r) => setTimeout(r, 100));
+    void user.client.removeChannel(ch);
+    expect(deletionSeen).toBe(true);
   });
 });
 
 describe('deletion on the server', () => {
-  // F-05: deletes are tombstones that keep every column. "Delete all data" therefore leaves the
-  // financial content (descriptions, amounts, dates) stored in the account.
-  it.fails('F-05: a deleted transaction’s content is removed from the server', async () => {
+  // F-05 (fixed): a delete removes the row; only a content-free entry in `deletions` remains.
+  it('F-05: a deleted transaction’s content is removed from the server', async () => {
     await push(user.client, [
       upsert(
         'transactions',
         txnRow('del-1', 'acc-1', { description: 'Private purchase', amount_cents: -12_345 }),
       ),
     ]);
-    await push(user.client, [{ table: 'transactions', id: 'del-1', op: 'delete', base_rev: 1 }]);
-    const { data } = await user.client
-      .from('transactions')
-      .select('deleted, description, amount_cents')
-      .eq('id', 'del-1')
-      .single();
-    expect(data?.deleted).toBe(true);
-    expect(data?.description).not.toBe('Private purchase');
+    const res = await push(user.client, [
+      { table: 'transactions', id: 'del-1', op: 'delete', base_rev: 1 },
+    ]);
+    expect(res[0]).toMatchObject({ status: 'applied', revision: 2 });
+    expect(res[0]!.record).toEqual({
+      id: 'del-1',
+      revision: 2,
+      deleted: true,
+      server_updated_at: expect.any(String),
+    });
+    const { data: rows } = await user.client.from('transactions').select('*').eq('id', 'del-1');
+    expect(rows).toEqual([]);
+    const { data: log } = await user.client.from('deletions').select('*').eq('id', 'del-1');
+    expect(log).toHaveLength(1);
+    expect(Object.keys(log![0]!).sort()).toEqual(
+      ['deleted_at', 'id', 'revision', 'server_updated_at', 'table_name', 'user_id'].sort(),
+    );
+    expect(JSON.stringify(log)).not.toContain('Private purchase');
   });
 });

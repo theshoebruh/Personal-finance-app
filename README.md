@@ -102,7 +102,8 @@ write is also queued in an outbox in the same transaction. The sync engine sends
 with the server revision the device last saw; the server applies a change only if nobody else changed
 that record since, otherwise it reports a **conflict**. The synced version is then shown, and this
 device's version is kept under Settings → Sync until you choose which to keep. It never silently
-overwrites. Deletions sync as tombstones. Changes reach other devices within seconds through Supabase
+overwrites. A deletion removes the record from the server; only a content-free entry (table, id, date)
+is kept so other devices learn about it. Changes reach other devices within seconds through Supabase
 Realtime, and also on app focus, when the network returns, and at least every minute. Every table has row-level
 security limiting rows to their owner.
 
@@ -146,6 +147,10 @@ their original row text, and can be removed together with **Undo import**.
 - **Signed in:** records are stored in your Supabase project, readable only through your account
   (RLS). They are encrypted in transit and at rest by Supabase but are **not end-to-end encrypted**:
   the database operator could read them. Not signed in: data stays in this browser only.
+- **Deleting** (one record or Delete all data) removes the records from the server. A small log of
+  what was deleted (table, id, date; no amounts or descriptions) is kept so your other devices
+  catch up. Supabase's own backups (paid plans) can keep deleted data until they expire, typically
+  7 days.
 - Back up regularly anyway (Settings → Download backup file / Copy backup text): a deletion on one
   device deletes everywhere. **Backups are plain JSON and are not encrypted.**
 - Restore offers **Merge** (upsert by ID, never duplicates) or **Replace** (also replaces the synced

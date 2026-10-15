@@ -52,7 +52,8 @@ accounts(user_id, id)`), `deferrable initially deferred` so a batch can arrive i
 - CHECK constraints mirror domain rules: non-zero amounts, sign by type (income > 0, expense < 0,
   refund > 0), enums, transfer legs must carry a transfer ID.
 - Sync columns on every table: `revision bigint` (incremented by trigger), `server_updated_at
-timestamptz` (trigger, `clock_timestamp()`), `deleted boolean` (tombstone).
+timestamptz` (trigger, `clock_timestamp()`), `deleted boolean` (always false since
+  migration `20261016090000`; deletions are hard deletes recorded in a content-free `deletions` log).
 - Transfer integrity (deferred constraint trigger): at most two live legs per `transfer_id`, and a
   complete pair must sum to zero — a server-side guard against inflated transfers.
 
@@ -65,7 +66,8 @@ RLS is enabled and forced on every table. Policies for the `authenticated` role 
 ### Sync functions (security invoker, so RLS still applies)
 
 - `sync_push(changes jsonb)`: for each `{table, id, op, base_rev, record}` (table whitelisted):
-  insert when new; update/tombstone only when `revision = base_rev`; otherwise return `conflict`
+  insert when new; update or delete only when `revision = base_rev` (a delete removes the row
+  and logs it in `deletions`; re-creating a deleted id needs the deletion's revision); otherwise return `conflict`
   with the server row. `user_id` is always forced to `auth.uid()`. One transaction per call.
 - `sync_pull(since_ts, since_table, since_id, limit)`: rows changed after a keyset cursor, across all
   tables, including tombstones.

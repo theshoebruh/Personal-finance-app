@@ -67,8 +67,10 @@ export class FakeRemote implements SyncRemote {
             record: existing ? this.row(existing) : null,
           });
         } else if (existing.revision === c.base_rev) {
+          // Like the server's deletions log: the content is gone, only id + revision remain.
           const next = {
             ...existing,
+            record: {},
             deleted: true,
             revision: existing.revision + 1,
             ts: this.nextTs(),

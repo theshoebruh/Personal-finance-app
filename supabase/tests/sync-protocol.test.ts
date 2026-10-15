@@ -173,3 +173,54 @@ describe('sync_pull paging', () => {
     expect(new Set(seen).size).toBe(25);
   });
 });
+
+describe('hard deletes and the deletions log (F-05)', () => {
+  it('re-creating a deleted id needs the deletion revision and continues from it', async () => {
+    const u = await newUser('recreate');
+    await push(u.client, [upsert('accounts', accountRow('acc-r'))]);
+    await push(u.client, [upsert('transactions', txnRow('re-1', 'acc-r'))]);
+    const del = await push(u.client, [
+      { table: 'transactions', id: 're-1', op: 'delete', base_rev: 1 },
+    ]);
+    expect(del[0]).toMatchObject({ status: 'applied', revision: 2 });
+
+    // A device that never saw the deletion can't silently bring the record back.
+    const blind = await push(u.client, [upsert('transactions', txnRow('re-1', 'acc-r'), 1)]);
+    expect(blind[0]).toMatchObject({ status: 'conflict', revision: 2 });
+    expect(blind[0]!.record).toMatchObject({ id: 're-1', deleted: true });
+
+    // A device that saw it (base_rev 2) can; the new row continues at revision 3.
+    const back = await push(u.client, [
+      upsert('transactions', txnRow('re-1', 'acc-r', { description: 'Back again' }), 2),
+    ]);
+    expect(back[0]).toMatchObject({ status: 'applied', revision: 3 });
+    const { data: log } = await u.client.from('deletions').select('id').eq('id', 're-1');
+    expect(log).toEqual([]); // the deletion entry is cleared once the record exists again
+
+    const { data } = await u.client.rpc('sync_pull', { p_limit: 1000 });
+    const rows = (
+      data as { table: string; record: { id: string; revision: number; deleted: boolean } }[]
+    ).filter((r) => r.record.id === 're-1');
+    expect(rows).toEqual([
+      { table: 'transactions', record: expect.objectContaining({ revision: 3, deleted: false }) },
+    ]);
+  });
+
+  it('refuses to delete a record that live records still depend on', async () => {
+    const u = await newUser('orphan');
+    await push(u.client, [upsert('accounts', accountRow('acc-o'))]);
+    await push(u.client, [upsert('transactions', txnRow('o-1', 'acc-o'))]);
+    const res = await u.client.rpc('sync_push', {
+      p_changes: [{ table: 'accounts', id: 'acc-o', op: 'delete', base_rev: 1 }],
+    });
+    expect(res.error?.code).toBe('23503');
+    const { data } = await u.client.from('accounts').select('id').eq('id', 'acc-o');
+    expect(data).toHaveLength(1); // nothing was deleted
+    // Deleting the dependant and the account together works.
+    const both = await push(u.client, [
+      { table: 'transactions', id: 'o-1', op: 'delete', base_rev: 1 },
+      { table: 'accounts', id: 'acc-o', op: 'delete', base_rev: 1 },
+    ]);
+    expect(both.map((r) => r.status)).toEqual(['applied', 'applied']);
+  });
+});
