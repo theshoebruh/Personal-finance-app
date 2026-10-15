@@ -31,7 +31,7 @@ import {
   useStatus,
 } from '@/components/ui';
 import { AccountOptions, CategoryOptions, lookup } from '../shared';
-import { TransactionForm, TransferForm } from './TransactionForms';
+import { ConvertToTransferPanel, TransactionForm, TransferForm } from './TransactionForms';
 
 type Sort = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
 type Panel = { kind: 'new' } | { kind: 'transfer' } | { kind: 'edit'; txn: Transaction } | null;
@@ -126,15 +126,23 @@ export function TransactionsPage() {
   function editPanel(txn: Transaction) {
     if (txn.type !== 'transfer' || !txn.transferId) {
       return (
-        <TransactionForm
-          key={txn.id}
-          accounts={data!.accounts}
-          categories={data!.categories}
-          editing={txn}
-          today={today}
-          onDone={done}
-          onCancel={() => setPanel(null)}
-        />
+        <>
+          <TransactionForm
+            key={txn.id}
+            accounts={data!.accounts}
+            categories={data!.categories}
+            editing={txn}
+            today={today}
+            onDone={done}
+            onCancel={() => setPanel(null)}
+          />
+          <ConvertToTransferPanel
+            key={`conv-${txn.id}`}
+            txn={txn}
+            accounts={data!.accounts}
+            onDone={done}
+          />
+        </>
       );
     }
     const legs = data!.transactions.filter((t) => t.transferId === txn.transferId);

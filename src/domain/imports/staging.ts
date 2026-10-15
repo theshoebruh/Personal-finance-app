@@ -1,3 +1,4 @@
+import type { TransferSuggestion } from './transfers';
 import type { Account, Transaction } from '../models';
 import { type IsoDate, diffDays } from '../dates';
 import type { Cents } from '../money';
@@ -23,6 +24,10 @@ export interface StagedRow extends NormalisedRow {
   duplicateOf?: DuplicateMatch;
   /** Other lines in this file that look identical (e.g. two same-day coffees). Kept, but flagged. */
   identicalLines: number[];
+  /** Why this row may be a transfer between your own accounts (see transfers.ts). */
+  transferSuggestion?: TransferSuggestion | null;
+  /** The user's choice: import as a transfer with this account, or null for income/expense. */
+  transferAccountId?: string | null;
 }
 
 /** Days either side within which a manually entered transaction is treated as a possible match. */
@@ -291,6 +296,10 @@ export interface StagingSummary {
   dateRange: { from: IsoDate; to: IsoDate } | null;
   /** Selected rows dated before the account's opening-balance date (they won't change its balance). */
   beforeOpeningDate: number;
+  /** Selected rows that will be imported as transfers between your own accounts. */
+  transfers: number;
+  /** Rows with a transfer suggestion the user hasn't accepted. */
+  possibleTransfers: number;
 }
 
 export function summariseStaging(rows: readonly StagedRow[], account: Account): StagingSummary {
@@ -310,5 +319,7 @@ export function summariseStaging(rows: readonly StagedRow[], account: Account): 
     selectedOutCents: selected.reduce((s, r) => s + Math.max(0, -r.amountCents!), 0),
     dateRange: dates.length ? { from: dates[0]!, to: dates[dates.length - 1]! } : null,
     beforeOpeningDate: selected.filter((r) => r.date! < account.openingBalanceDate).length,
+    transfers: selected.filter((r) => r.transferAccountId).length,
+    possibleTransfers: selected.filter((r) => r.transferSuggestion && !r.transferAccountId).length,
   };
 }

@@ -1,7 +1,9 @@
 # Plan: imported transfers (F-03) and deleted data on the server (F-05)
 
 Status: **F-05 implemented** (migration `20261016090000_hard_deletes.sql`, tested locally, not yet
-applied to the hosted project). **F-03 in progress.**
+applied to the hosted project). **F-03 implemented.** Undoing an import reverts a
+transaction it converted into a transfer to income/expense marked “needs review” (its previous
+category isn't stored, to avoid another database change).
 
 ---
 

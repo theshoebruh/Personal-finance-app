@@ -332,9 +332,9 @@ describe('transaction behaviour (verified)', () => {
 // ------------------------------------------------------------------ confirmed bugs / gaps
 
 describe('confirmed issues (it.fails = problem still present)', () => {
-  // F-03: CSV rows are always income/expense. A bank statement's transfer to savings becomes an
-  // expense, and the savings account's statement shows it again as income.
-  it.fails('F-03: an imported transfer to savings is not counted as spending', async () => {
+  // F-03 (fixed): the import review suggests the transfer; once the user chooses the savings
+  // account under "Import as", it is imported as a transfer, not spending.
+  it('F-03: an imported transfer to savings is not counted as spending', async () => {
     const db = newDb();
     const store = createDexieStore(db);
     await ensureInitialised(store);
@@ -346,9 +346,19 @@ describe('confirmed issues (it.fails = problem still present)', () => {
       openingBalanceDate: '2026-03-01',
       includeInSpendable: true,
     });
+    const sav = await createAccount(store, {
+      name: 'Savings',
+      type: 'savings',
+      workspace: 'personal',
+      openingBalanceCents: 0,
+      openingBalanceDate: '2026-03-01',
+      includeInSpendable: false,
+    });
     const csv = 'Date,Description,Amount\n2026-03-05,TRANSFER TO SAVINGS POCKET,-2160.00\n';
     const p = await prepareImport(store, { accountId: acc.id, text: csv });
-    await commitImport(store, { prepared: p, rows: p.staging.rows, saveMapping: false });
+    expect(p.staging.rows[0]!.transferSuggestion?.otherAccountId).toBe(sav.id);
+    const rows = p.staging.rows.map((r) => ({ ...r, transferAccountId: sav.id }));
+    await commitImport(store, { prepared: p, rows, saveMapping: false });
     const s = summariseIncomeExpenses(
       await store.transactions.list(),
       'personal',

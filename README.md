@@ -139,7 +139,10 @@ Safeguards against double counting:
 **Import statement** (`/import`) reads a CSV file on the device; the file itself is never uploaded
 and no data is sent to any AI service. You confirm the column mapping against a preview, review every
 row (unreadable rows are listed and never imported; duplicates are unticked; identical rows in one
-file stay ticked but flagged), then import. Imported transactions are marked **Needs review**, keep
+file stay ticked but flagged), then import. Rows that look like **transfers between your own
+accounts** (an opposite amount in another account within 3 days, or wording such as “transfer to
+savings”) can be imported as transfers so they don't count as income or spending; existing
+transactions can be converted with _Convert to transfer_. Imported transactions are marked **Needs review**, keep
 their original row text, and can be removed together with **Undo import**.
 
 ## Your data: backup, privacy and limitations

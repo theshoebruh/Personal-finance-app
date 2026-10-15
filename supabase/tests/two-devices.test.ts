@@ -228,3 +228,36 @@ describe('two devices through the real Supabase API', () => {
     expect(pc.engine.getStatus().state).toBe('signed_out');
   });
 });
+
+describe('imported transfers across devices (F-03)', () => {
+  it('a transfer created by an import on the PC arrives on the phone as one balanced pair', async () => {
+    const user = await newUser('xfer');
+    const pc = await device(user);
+    const main = await createAccount(pc.store, ACC);
+    const sav = await createAccount(pc.store, {
+      ...ACC,
+      name: 'Savings',
+      type: 'savings',
+      includeInSpendable: false,
+      openingBalanceCents: 0,
+    });
+    const csv = 'Date,Description,Amount\n2026-03-05,TRANSFER TO SAVINGS,-2160.00\n';
+    const p = await prepareImport(pc.store, { accountId: main.id, text: csv });
+    const rows = p.staging.rows.map((r) => ({ ...r, transferAccountId: sav.id }));
+    await commitImport(pc.store, { prepared: p, rows, saveMapping: false });
+    const report = await pc.engine.syncNow();
+    expect(report.failed).toBe(0); // the server's transfer check accepted the pair
+
+    const phone = await device(user);
+    const legs = (await phone.db.transactions.toArray()).filter((t) => t.type === 'transfer');
+    expect(legs).toHaveLength(2);
+    expect(legs.reduce((s, l) => s + l.amountCents, 0)).toBe(0);
+    const s = summariseIncomeExpenses(
+      await phone.db.transactions.toArray(),
+      'combined',
+      '2026-03-01',
+      '2026-03-31',
+    );
+    expect([s.incomeCents, s.expenseCents]).toEqual([0, 0]);
+  });
+});

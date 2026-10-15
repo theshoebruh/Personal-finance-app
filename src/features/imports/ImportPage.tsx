@@ -13,7 +13,7 @@ import {
   summariseStaging,
 } from '@/domain/imports';
 import { formatDisplayDate } from '@/domain/dates';
-import { WORKSPACE_LABELS } from '@/domain/models';
+import { WORKSPACE_LABELS, type Account } from '@/domain/models';
 import {
   type PreparedImport,
   checkImportFile,
@@ -301,11 +301,13 @@ function MappingCard({
 
 function ReviewCard({
   prepared,
+  accounts,
   rows,
   setRows,
   onImported,
 }: {
   prepared: PreparedImport;
+  accounts: readonly Account[];
   rows: StagedRow[];
   setRows: (r: StagedRow[]) => void;
   onImported: (msg: string) => void;
@@ -315,6 +317,12 @@ function ReviewCard({
   const [limit, setLimit] = useState(PAGE);
   const [saveMapping, setSaveMapping] = useState(true);
   const [useClosing, setUseClosing] = useState(false);
+  const [recordOtherSide, setRecordOtherSide] = useState(true);
+  /** Rows where the user opened the transfer choice without a suggestion. */
+  const [transferOpen, setTransferOpen] = useState<Set<number>>(new Set());
+  const otherAccounts = accounts.filter((a) => a.active && a.id !== prepared.account.id);
+  const accountName = (id: string | null | undefined) =>
+    otherAccounts.find((a) => a.id === id)?.name ?? 'another account';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const summary = summariseStaging(rows, prepared.account);
@@ -327,8 +335,10 @@ function ReviewCard({
         ? r.include
         : filter === 'skipped'
           ? !r.include
-          : r.status !== 'new' || r.identicalLines.length > 0,
+          : r.status !== 'new' || r.identicalLines.length > 0 || Boolean(r.transferSuggestion),
   );
+  const setTransfer = (index: number, accountId: string | null) =>
+    setRows(rows.map((r) => (r.index === index ? { ...r, transferAccountId: accountId } : r)));
   const toggle = (index: number) =>
     setRows(
       rows.map((r) =>
@@ -345,8 +355,14 @@ function ReviewCard({
         rows,
         saveMapping,
         closingBalance: useClosing && closing ? closing : undefined,
+        recordOtherSide,
       });
-      onImported(`Imported ${res.created} transaction${res.created === 1 ? '' : 's'}`);
+      onImported(
+        `Imported ${res.created} transaction${res.created === 1 ? '' : 's'}` +
+          (res.transfers > 0
+            ? ` (${res.transfers} as transfer${res.transfers === 1 ? '' : 's'} between your accounts)`
+            : ''),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -390,6 +406,15 @@ function ReviewCard({
             <span className="negative">{summary.invalid}</span>
           </li>
         )}
+        {(summary.transfers > 0 || summary.possibleTransfers > 0) && (
+          <li>
+            <span>Transfers between your own accounts (not income or spending)</span>
+            <span>
+              {summary.transfers}
+              {summary.possibleTransfers > 0 && ` · ${summary.possibleTransfers} possible`}
+            </span>
+          </li>
+        )}
         <li>
           <span>
             Selected: <strong>{summary.selected}</strong>
@@ -400,6 +425,13 @@ function ReviewCard({
           </span>
         </li>
       </ul>
+      {summary.possibleTransfers > 0 && (
+        <Alert tone="info">
+          {summary.possibleTransfers} row{summary.possibleTransfers === 1 ? ' looks' : 's look'}{' '}
+          like a transfer between your own accounts (marked <strong>Possible transfer</strong>).
+          Choose the account under “Import as” so it isn’t counted as income or spending.
+        </Alert>
+      )}
       {summary.identicalInFile > 0 && (
         <Alert tone="info">
           {summary.identicalInFile} rows look identical to another row in this file (same date,
@@ -481,7 +513,56 @@ function ReviewCard({
                   {r.identicalLines.length > 0 && (
                     <span>Identical to line {r.identicalLines.join(', ')}</span>
                   )}
+                  {r.transferSuggestion?.strength === 'wording' && !r.transferAccountId && (
+                    <Badge kind="warning">Possible transfer</Badge>
+                  )}
+                  {r.transferSuggestion?.counterpart && (
+                    <span>
+                      {r.transferSuggestion.strength === 'half_recorded'
+                        ? 'Completes the transfer'
+                        : 'Matches'}{' '}
+                      “{r.transferSuggestion.counterpart.description}” in{' '}
+                      {accountName(r.transferSuggestion.otherAccountId)} on{' '}
+                      <DateText date={r.transferSuggestion.counterpart.date} />
+                    </span>
+                  )}
                 </div>
+                {r.status !== 'invalid' &&
+                  r.include &&
+                  otherAccounts.length > 0 &&
+                  !r.transferSuggestion &&
+                  !r.transferAccountId &&
+                  !transferOpen.has(r.index) && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm link-button"
+                      onClick={() => setTransferOpen((o) => new Set(o).add(r.index))}
+                    >
+                      This is a transfer…
+                    </button>
+                  )}
+                {r.status !== 'invalid' &&
+                  r.include &&
+                  otherAccounts.length > 0 &&
+                  (r.transferSuggestion || r.transferAccountId || transferOpen.has(r.index)) && (
+                    <div className="field import-as">
+                      <label className="xs" htmlFor={`as-${r.index}`}>
+                        Import as
+                      </label>
+                      <select
+                        id={`as-${r.index}`}
+                        value={r.transferAccountId ?? ''}
+                        onChange={(e) => setTransfer(r.index, e.target.value || null)}
+                      >
+                        <option value="">{(r.amountCents ?? 0) > 0 ? 'Income' : 'Spending'}</option>
+                        {otherAccounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            Transfer {(r.amountCents ?? 0) < 0 ? 'to' : 'from'} {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
               </div>
               {r.amountCents !== null && <Money cents={r.amountCents} signed tone />}
             </li>
@@ -513,6 +594,20 @@ function ReviewCard({
             <span>
               Use the statement’s closing balance (<Money cents={closing.balanceCents} /> on{' '}
               <DateText date={closing.date} />) as this account’s reconciliation check
+            </span>
+          </label>
+        )}
+        {summary.transfers > 0 && (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={recordOtherSide}
+              onChange={(e) => setRecordOtherSide(e.target.checked)}
+            />
+            <span>
+              For transfers not yet recorded in the other account, record that side too (keeps both
+              balances right; if you import that account’s statement later, the matching row is
+              flagged as a possible duplicate)
             </span>
           </label>
         )}
@@ -763,6 +858,7 @@ export function ImportPage() {
           <ReviewCard
             key={`${prepared.fileName}-${JSON.stringify(prepared.staging.mapping)}`}
             prepared={prepared}
+            accounts={data.accounts}
             rows={rows}
             setRows={setRows}
             onImported={(msg) => {

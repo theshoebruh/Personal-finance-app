@@ -860,3 +860,20 @@ legend {
 .sync-dot[data-state='signed_out'] {
   background: var(--color-negative);
 }
+
+/* "Import as" choice on statement rows */
+.import-as {
+  margin-top: var(--space-2);
+  max-width: 340px;
+}
+.import-as select {
+  min-height: 36px;
+  font-size: max(16px, var(--text-sm));
+}
+
+.link-button {
+  padding-left: 0;
+  min-height: 32px;
+  color: var(--color-info);
+  font-weight: 500;
+}

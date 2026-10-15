@@ -1,3 +1,4 @@
+import { isStrongTransfer, suggestTransfers } from './transfers';
 import type { Account, Transaction } from '../models';
 import { normaliseText } from '../calculations/recurring';
 import { type ColumnMapping, type DateFormat, normaliseRows } from './normalise';
@@ -40,6 +41,8 @@ export function buildStaging(
   mapping: ColumnMapping,
   account: Account,
   existing: readonly Transaction[],
+  /** All your accounts and transactions, for transfer suggestions (optional). */
+  context?: { accounts: readonly Account[]; transactions: readonly Transaction[] },
 ): Staging {
   const columnCount = Math.max(0, ...rows.map((r) => r.length));
   const mappingErrors: string[] = [];
@@ -70,10 +73,28 @@ export function buildStaging(
     };
   }
   const n = normaliseRows(rows, mapping);
+  const staged = stageRows(n.rows, account.id, existing);
+  if (context) {
+    const suggestions = suggestTransfers(
+      staged.map((r) =>
+        r.status === 'new'
+          ? { date: r.date!, amountCents: r.amountCents!, description: r.description }
+          : null,
+      ),
+      account,
+      context.accounts,
+      context.transactions,
+    );
+    staged.forEach((r, i) => {
+      const s = suggestions[i] ?? null;
+      r.transferSuggestion = s;
+      r.transferAccountId = isStrongTransfer(s) ? s!.otherAccountId : null;
+    });
+  }
   return {
     mapping,
     columnCount,
-    rows: stageRows(n.rows, account.id, existing),
+    rows: staged,
     dateFormatUsed: n.dateFormatUsed,
     dateFormatAmbiguous: n.dateFormatAmbiguous,
     balanceCheck: checkRunningBalance(n.rows),
