@@ -50,7 +50,54 @@ export const SCHEMA_VERSIONS: ReadonlyArray<{
     version: 2,
     stores: { importProfiles: 'id, accountId' },
   },
+  {
+    // v3: sync bookkeeping (only used when signed in). Existing data is untouched.
+    version: 3,
+    stores: {
+      outbox: 'key, table, queuedAt',
+      syncMeta: 'key',
+      syncState: 'key',
+      conflicts: 'key, detectedAt',
+    },
+  },
 ];
+
+/** A local change waiting to be sent to the server (one per record; the latest operation wins). */
+export interface OutboxEntry {
+  key: string;
+  table: string;
+  id: string;
+  op: 'upsert' | 'delete';
+  queuedAt: string;
+  attempts: number;
+  /** Set when the server rejected this change; it is not retried until the record changes again. */
+  failedReason?: string;
+}
+
+/** The last server revision this device has seen for a record. */
+export interface SyncMeta {
+  key: string;
+  rev: number;
+  deleted: boolean;
+}
+
+export interface SyncStateEntry {
+  key: string;
+  value: unknown;
+}
+
+/** A local version that lost to a newer synced version; kept until the user decides. */
+export interface ConflictEntry {
+  key: string;
+  table: string;
+  id: string;
+  /** This device's version (null if this device deleted it). */
+  local: Record<string, unknown> | null;
+  /** The synced version now applied locally (null if it was deleted elsewhere). */
+  remote: Record<string, unknown> | null;
+  remoteRev: number;
+  detectedAt: string;
+}
 
 export class FinanceDb extends Dexie {
   accounts!: Table<Account, string>;
@@ -66,6 +113,10 @@ export class FinanceDb extends Dexie {
   projects!: Table<Project, string>;
   invoices!: Table<Invoice, string>;
   settings!: Table<AppSettings, string>;
+  outbox!: Table<OutboxEntry, string>;
+  syncMeta!: Table<SyncMeta, string>;
+  syncState!: Table<SyncStateEntry, string>;
+  conflicts!: Table<ConflictEntry, string>;
 
   constructor(name: string = DB_NAME) {
     super(name);
@@ -95,7 +146,15 @@ export type DataTableName = (typeof DATA_TABLES)[number];
 
 let instance: FinanceDb | null = null;
 
-/** The app-wide database. Tests create their own `new FinanceDb(uniqueName)` instead. */
+/**
+ * Each signed-in user gets their own local database, so two people using one browser never see
+ * each other's cached records. The unsuffixed database is the local-only (not signed in) copy.
+ */
+export function userDbName(userId: string): string {
+  return `${DB_NAME}-${userId}`;
+}
+
+/** The app-wide local-only database. Tests create their own `new FinanceDb(uniqueName)` instead. */
 export function getDb(): FinanceDb {
   instance ??= new FinanceDb();
   return instance;
