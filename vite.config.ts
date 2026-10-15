@@ -1,39 +1,74 @@
 /// <reference types="vitest/config" />
 import { fileURLToPath, URL } from 'node:url';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 /**
- * Strict Content Security Policy, injected only into production builds.
- * The dev server needs inline scripts for React Fast Refresh, so it is not applied there.
- * No connect-src beyond 'self': the app never sends financial data to a server.
+ * Strict Content Security Policy, injected only into production builds (the dev server needs
+ * inline scripts for React Fast Refresh). The only server the app may talk to is the configured
+ * Supabase project (HTTPS for data and auth, WSS for Realtime); without one it talks to nothing.
  */
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  "connect-src 'self'",
-  "worker-src 'self'",
-  "manifest-src 'self'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-].join('; ');
+function buildCsp(supabaseUrl: string): string {
+  const connect = ["'self'"];
+  if (supabaseUrl) {
+    const u = new URL(supabaseUrl);
+    connect.push(u.origin, `${u.protocol === 'https:' ? 'wss' : 'ws'}://${u.host}`);
+  }
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "img-src 'self' data:",
+    "font-src 'self'",
+    `connect-src ${connect.join(' ')}`,
+    "worker-src 'self'",
+    "manifest-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; ');
+}
 
-function cspPlugin(): Plugin {
+function cspPlugin(supabaseUrl: string): Plugin {
+  const csp = buildCsp(supabaseUrl);
   return {
     name: 'inject-csp',
     apply: 'build',
     transformIndexHtml(html) {
       return html.replace(
         '<meta charset="UTF-8" />',
-        `<meta charset="UTF-8" />\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`,
+        `<meta charset="UTF-8" />\n    <meta http-equiv="Content-Security-Policy" content="${csp}" />`,
       );
     },
   };
+}
+
+/** Stops a build that would ship a secret key or an insecure API URL to every visitor. */
+function checkPublicEnv(url: string, key: string, mode: string): void {
+  if (key.startsWith('sb_secret_')) {
+    throw new Error(
+      'VITE_SUPABASE_PUBLISHABLE_KEY is a secret key. Use the publishable (anon) key.',
+    );
+  }
+  const jwtPayload = key.split('.')[1];
+  if (jwtPayload) {
+    try {
+      const role = JSON.parse(Buffer.from(jwtPayload, 'base64url').toString('utf8')).role;
+      if (role === 'service_role') {
+        throw new Error('VITE_SUPABASE_PUBLISHABLE_KEY is the service_role key. Use the anon key.');
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message.includes('service_role')) throw e;
+    }
+  }
+  if (url && mode === 'production') {
+    const u = new URL(url);
+    const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+    if (u.protocol !== 'https:' && !local) {
+      throw new Error(`VITE_SUPABASE_URL must use https (got ${url}).`);
+    }
+  }
 }
 
 /**
@@ -42,6 +77,9 @@ function cspPlugin(): Plugin {
  */
 export default defineConfig(({ mode }) => {
   const artifact = mode === 'artifact';
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
+  const supabaseUrl = artifact ? '' : (env.VITE_SUPABASE_URL ?? '');
+  checkPublicEnv(supabaseUrl, env.VITE_SUPABASE_PUBLISHABLE_KEY ?? '', mode);
   return {
     base: artifact ? './' : '/',
     resolve: {
@@ -57,16 +95,18 @@ export default defineConfig(({ mode }) => {
       : {},
     plugins: [
       react(),
-      !artifact && cspPlugin(),
+      !artifact && cspPlugin(supabaseUrl),
       !artifact &&
         VitePWA({
           registerType: 'prompt',
           injectRegister: false,
           includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
           manifest: {
+            id: '/',
             name: 'Personal Finance Hub',
             short_name: 'Finance Hub',
-            description: 'Local-first personal and small-business budgeting (ZAR).',
+            description:
+              'Personal and small-business budgeting (ZAR) that syncs between your devices.',
             lang: 'en-ZA',
             start_url: '/',
             scope: '/',
@@ -88,6 +128,8 @@ export default defineConfig(({ mode }) => {
           workbox: {
             globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
             navigateFallback: '/index.html',
+            // Only the app shell is cached. API and auth calls always go to the network.
+            runtimeCaching: [],
           },
         }),
     ],

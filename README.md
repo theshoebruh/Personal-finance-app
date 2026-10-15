@@ -1,43 +1,62 @@
 # Personal Finance Hub (working title)
 
-A private, local-first Progressive Web App for one person to manage personal and small-business
-finances in South African Rand. Its main job is answering **"how much can I safely spend?"**, with
-every figure explained.
+A private Progressive Web App for one person to manage personal and small-business finances in
+South African Rand. Its main job is answering **"how much can I safely spend?"**, with every figure
+explained.
 
-- Dark, responsive UI for Windows desktop and iPhone-sized screens
-- Data stays in this browser (IndexedDB). No account, no server, no bank login
+- Dark, responsive UI for Windows desktop and iPhone-sized screens, installable as a PWA
+- Works offline: each device keeps a working copy in IndexedDB
+- Optional **sync between devices** through your own Supabase account (sign-in, row-level security)
 - Personal and Business workspaces, plus a Combined view
-- Works without any bank API: import CSV statements (reviewed before saving, undoable) or enter
-  transactions manually
+- No bank API: import CSV statements (reviewed before saving, undoable) or enter transactions manually
 
-See [`docs/implementation-status.md`](docs/implementation-status.md) for what is built, what is
-not, and the assumptions made.
+See [`docs/implementation-status.md`](docs/implementation-status.md) for what is built and the
+assumptions made, [`docs/backend-plan.md`](docs/backend-plan.md) for the sync design, and
+[`docs/deployment.md`](docs/deployment.md) for Supabase setup and Cloudflare Pages deployment.
 
 ## Getting started
 
-Requires Node.js 20.19+ and npm.
+Requires Node.js 20.19+ and npm. For sync and the database tests you also need Docker.
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173
+cp .env.example .env.local   # optional: fill in Supabase values to enable sign-in and sync
+npm run dev                  # http://localhost:5173
 ```
 
-| Script              | What it does                                            |
-| ------------------- | ------------------------------------------------------- |
-| `npm run dev`       | Vite dev server                                         |
-| `npm run build`     | Type-check, then production build to `dist/` (+ PWA)    |
-| `npm run preview`   | Serve the production build locally                      |
-| `npm test`          | Vitest unit + integration tests (jsdom, fake IndexedDB) |
-| `npm run typecheck` | `tsc --noEmit`                                          |
-| `npm run lint`      | ESLint                                                  |
-| `npm run format`    | Prettier                                                |
-| `npm run icons`     | Regenerate the PNG app icons in `public/`               |
+With `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` empty, the app runs **local-only**: no
+sign-in, data stays in this browser. With them set, the whole app is behind sign-in and syncs. For a
+local Supabase stack: `npx supabase start && npx supabase db reset` (details in
+[`docs/deployment.md`](docs/deployment.md)).
 
-No environment variables or secrets are needed. The app makes no network requests for data.
+| Script                   | What it does                                                         |
+| ------------------------ | -------------------------------------------------------------------- |
+| `npm run dev`            | Vite dev server                                                      |
+| `npm run build`          | Type-check, then production build to `dist/` (PWA, CSP, `_headers`)  |
+| `npm run preview`        | Serve the production build locally                                   |
+| `npm test`               | Unit and integration tests (jsdom, fake IndexedDB, in-memory server) |
+| `npm run test:db`        | RLS and sync tests against local Supabase (`npx supabase start`)     |
+| `npm run check:pwa`      | Service worker, manifest, offline and CSP checks in headless Edge    |
+| `npm run typecheck`      | `tsc --noEmit`                                                       |
+| `npm run lint`           | ESLint                                                               |
+| `npm run format`         | Prettier                                                             |
+| `npm run build:artifact` | Local-only variant for the Claude artifact viewer (`dist-artifact/`) |
 
 > **Windows note:** `package.json` overrides Rollup with its official WASM build
 > (`@rollup/wasm-node`) because Windows Application Control on the development machine blocks
 > Rollup's native `.node` binary. Builds are slightly slower; behaviour is the same.
+
+## Deployment (Cloudflare Pages)
+
+| Setting                | Value                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| Build command          | `npm run build`                                                              |
+| Build output directory | `dist`                                                                       |
+| Environment variables  | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `NODE_VERSION=20.19.0` |
+
+Both Supabase values are public by design (row-level security protects the data). Never use the
+secret/service-role key; the build refuses it. Full steps, including Supabase auth settings and
+turning off sign-ups after creating your account, are in [`docs/deployment.md`](docs/deployment.md).
 
 ## Architecture
 
@@ -46,29 +65,43 @@ src/
   domain/            Pure, framework-free logic
     models/          Zod schemas + TypeScript types for every entity
     calculations/    Financial engine (pure functions, unit tested)
+    imports/         CSV parsing, column mapping, normalisation, fingerprints, duplicate staging
     money.ts         Integer-cent helpers, ZAR parsing/formatting
     dates.ts         ISO calendar dates in Africa/Johannesburg
     defaults.ts      Editable defaults (R12,000 salary, R1,200 tithe, 20%) and seed categories
   data/
     local-db/        Dexie (IndexedDB) schema and versioned migrations
     repositories/    Storage-agnostic repository interfaces + Dexie implementation (validates on write)
-  domain/imports/    CSV parsing, column mapping, date/amount normalisation, fingerprints, staging
-  services/          Application use cases: accounts, transactions/transfers, planning, import, backup, demo
-  app/               App shell, routing, context, live data hook, PWA update prompt
-  components/        Shared UI primitives
-  features/          Pages: dashboard, transactions, accounts, budgets, goals, business, reports, settings
-  styles/            Design tokens (dark theme) and app CSS
-  test/              Test factories
+    sync/            Change tracking (outbox), sync engine, Supabase client and row mapping
+  services/          Use cases: accounts, transactions/transfers, planning, import, backup, demo
+  app/               App shell, routing, sign-in gate, sync context, PWA update prompt
+  components/        Shared UI primitives and confirmation dialog
+  features/          Pages: dashboard, transactions, import, accounts, budgets, goals, business,
+                     reports, settings (incl. sync)
+supabase/
+  migrations/        Versioned SQL: tables, constraints, RLS policies, sync functions
+  tests/             Database tests run against the local stack
 ```
 
 Rules the code follows:
 
 - **Money is integer cents.** No floating-point arithmetic on persisted values.
-- **UI holds no formulas.** Pages call `domain/calculations` (e.g. `buildDashboard`,
-  `calculateAvailableToSpend`).
-- **Every write is validated** with Zod in the repository layer.
-- **Schema changes are migrations.** Add a new entry to `SCHEMA_VERSIONS` in
-  `src/data/local-db/db.ts`; never edit a released version.
+- **UI holds no formulas.** Pages call `domain/calculations` (e.g. `buildDashboard`).
+- **Every write is validated** with Zod locally and by column types and CHECK constraints on the
+  server.
+- **Schema changes are migrations** — `SCHEMA_VERSIONS` in `src/data/local-db/db.ts` for IndexedDB,
+  `supabase/migrations/` for Postgres. Never edit a released version.
+
+### Sync in one paragraph
+
+Each device works on its own IndexedDB copy, so the app is fast and works offline. Every local
+write is also queued in an outbox in the same transaction. The sync engine sends queued changes
+with the server revision the device last saw; the server applies a change only if nobody else changed
+that record since, otherwise it reports a **conflict**. The synced version is then shown, and this
+device's version is kept under Settings → Sync until you choose which to keep. It never silently
+overwrites. Deletions sync as tombstones. Changes arrive on other devices within seconds through
+Supabase Realtime, and on focus, reconnect and every minute otherwise. Every table has row-level
+security limiting rows to their owner.
 
 ### How "available to spend" is calculated
 
@@ -89,39 +122,32 @@ Safeguards against double counting:
 - A recurring bill is a forecast. It stops being deducted once a posted transaction matches it
   (same direction and workspace, amount within 10% or R1, date within the match window, and the
   same category or a description containing its name), or once you mark it as paid.
-- Transfers between your own accounts (including to savings, and personal↔business) are never
-  income or expenses.
-- Goal money held in a non-spendable account isn't subtracted again.
-- Savings already made this period reduce the remaining planned savings.
+- Transfers between your own accounts are never income or expenses. The server also rejects a
+  transfer with more than two legs or legs that don't balance.
+- Imports: duplicates are checked against everything already synced (the import page syncs first),
+  and the dashboard flags statement rows imported in two batches (e.g. on two devices offline).
+- Goal money held in a non-spendable account isn't subtracted again; savings already made this
+  period reduce the remaining planned savings.
 - Expected income, pending transactions and unpaid invoices are never counted as cash.
-
-The dashboard's "How this is calculated" panel shows each of these lines with its inputs.
 
 ### Importing statements
 
-**Import statement** (`/import`) reads a CSV file on the device; nothing is uploaded.
+**Import statement** (`/import`) reads a CSV file on the device; the file itself is never uploaded
+and no data is sent to any AI service. You confirm the column mapping against a preview, review every
+row (unreadable rows are listed and never imported; duplicates are unticked; identical rows in one
+file stay ticked but flagged), then import. Imported transactions are marked **Needs review**, keep
+their original row text, and can be removed together with **Undo import**.
 
-1. Choose the account and the file.
-2. Check the guessed (or saved) column mapping against a preview: date, description, a signed amount
-   or separate debit/credit columns, plus optional reference and running balance.
-3. Review every row before saving. Unreadable rows are listed and never imported. Rows that match an
-   existing transaction (same account, date, amount and description, plus bank reference if mapped)
-   are unticked, as are likely matches of entries you added manually. Identical rows within one file
-   stay ticked but are flagged, because two identical purchases on one day can be genuine.
-4. Imported transactions are marked **Needs review**, keep their original row text, and can be
-   removed together with **Undo import** in the history.
+## Your data: backup, privacy and limitations
 
-## Your data: backup and limitations
-
-- Data lives only in this browser profile on this device. **It does not sync between your iPhone
-  and PC.**
-- Browsers can clear site data (Safari may remove data for sites not used for a while). Use
-  **Settings → Export backup** regularly and keep the file somewhere private. Installing the app to
-  the home screen and allowing persistent storage reduce the risk.
-- **Backup files are plain JSON and are not encrypted.**
-- Restore offers **Merge** (upsert by ID, so restoring twice never duplicates) or **Replace**
-  (for a new device or after data loss). Invalid files are rejected without changing anything.
-- **Settings → Delete all data** wipes the device (type `DELETE` to confirm).
+- **Signed in:** records are stored in your Supabase project, readable only through your account
+  (RLS). They are encrypted in transit and at rest by Supabase but are **not end-to-end encrypted**:
+  the database operator could read them. Not signed in: data stays in this browser only.
+- Back up regularly anyway (Settings → Download backup file / Copy backup text): a deletion on one
+  device deletes everywhere. **Backups are plain JSON and are not encrypted.**
+- Restore offers **Merge** (upsert by ID, never duplicates) or **Replace** (also replaces the synced
+  copy when signed in). Invalid files are rejected without changing anything.
+- Signing out removes this device's copy by default; unsynced changes are sent first.
 - Demo data is labelled "Demo" and can be cleared without touching your own records.
 
 ## Known limitations
@@ -129,11 +155,10 @@ The dashboard's "How this is calculated" panel shows each of these lines with it
 - No bank connection of any kind. Capitec transaction-history access via an API is unverified, and
   the app never asks for banking credentials, PINs or OTPs. It cannot read iPhone SMS or
   notifications.
-- Statement import is CSV only. Excel workbooks must be saved as “CSV UTF-8” first; PDF statements
-  aren't supported. Imported rows arrive uncategorised (categorisation rules are next).
+- Statement import is CSV only (save Excel workbooks as “CSV UTF-8”); no PDF import.
 - Invoices, projects, charts, CSV/Excel export, what-if scenarios, categorisation rules, split
   transactions and configurable alert preferences are not built yet.
-- Offline use relies on the service worker. It is generated and served by the production build,
-  but installation/offline behaviour has not yet been verified on a real iPhone or desktop browser.
+- Offline behaviour and the service worker were verified in headless Microsoft Edge on Windows, not
+  yet on a physical iPhone.
 - Figures are estimates based on what you enter. They are not financial advice, and business
   figures are not formal accounting or tax results.

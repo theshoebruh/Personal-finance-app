@@ -1,6 +1,6 @@
 # Backend, sync and deployment plan
 
-Branch: `feature/supabase-sync`. Status: in progress — see the checklist at the end.
+Branch: `feature/supabase-sync`. Status: implemented — see the checklist at the end.
 
 ## 1. Audit of the current app
 
@@ -129,9 +129,11 @@ your account, disable new sign-ups in the Supabase dashboard (single-user app).
 ## Checklist
 
 - [x] Audit and plan
-- [ ] Migrations, RLS, sync functions
-- [ ] Change tracking and sync engine (+ tests)
-- [ ] Auth, protected app, per-user database
-- [ ] Sync status, conflicts UI, import safeguards
-- [ ] RLS and two-device tests against local Supabase
-- [ ] Cloudflare Pages config, PWA checks, `.env.example`, docs
+- [x] Migrations, RLS, sync functions
+- [x] Change tracking and sync engine (+ tests)
+- [x] Auth, protected app, per-user database
+- [x] Sync status, conflicts UI, import safeguards
+- [x] RLS and two-device tests against local Supabase
+- [x] Cloudflare Pages config, PWA checks, `.env.example`, docs
+- [ ] Deploy: create the hosted Supabase project and Cloudflare Pages site (needs your accounts; steps in `docs/deployment.md`)
+- [ ] Test on a physical iPhone (install, sign in, offline, sync with the PC)
