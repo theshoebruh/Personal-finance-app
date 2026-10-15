@@ -14,9 +14,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "icons": "node scripts/generate-icons.mjs",
-    "build:artifact": "tsc --noEmit && vite build --mode artifact && node scripts/build-artifact.mjs"
+    "build:artifact": "tsc --noEmit && vite build --mode artifact && node scripts/build-artifact.mjs",
+    "test:db": "vitest run --config vitest.db.config.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.109.0",
     "dexie": "^4.4.6",
     "dexie-react-hooks": "^1.1.7",
     "papaparse": "^5.7.0",
@@ -35,6 +37,7 @@
     "@types/papaparse": "^5.5.2",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^4.7.0",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -47,7 +50,8 @@
     "typescript-eslint": "^8.71.2",
     "vite": "^6.4.4",
     "vite-plugin-pwa": "^0.21.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "ws": "^8.22.0"
   },
   "engines": {
     "node": ">=20.19"
