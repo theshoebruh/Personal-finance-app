@@ -16,7 +16,8 @@
     "icons": "node scripts/generate-icons.mjs",
     "build:artifact": "tsc --noEmit && vite build --mode artifact && node scripts/build-artifact.mjs",
     "test:db": "vitest run --config vitest.db.config.ts",
-    "check:pwa": "node scripts/check-pwa.mjs"
+    "check:pwa": "node scripts/check-pwa.mjs",
+    "check:supabase": "node scripts/check-supabase.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
