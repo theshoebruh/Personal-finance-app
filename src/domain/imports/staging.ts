@@ -231,6 +231,53 @@ export function checkRunningBalance(rows: readonly NormalisedRow[]): BalanceChec
   };
 }
 
+export interface RepeatedImport {
+  accountId: string;
+  fingerprint: string;
+  description: string;
+  date: IsoDate;
+  amountCents: Cents;
+  /** Copies across all import batches. */
+  copies: number;
+  /** Most copies inside any single file (identical same-day rows that are genuinely separate). */
+  maxInOneFile: number;
+}
+
+/**
+ * Finds imported rows that appear in two or more import batches more often than in any single
+ * file — typically the same statement imported on two devices while offline, which the per-device
+ * duplicate check could not see. Advisory: the user decides what to archive.
+ */
+export function findRepeatedImports(transactions: readonly Transaction[]): RepeatedImport[] {
+  const groups = new Map<string, Transaction[]>();
+  for (const t of transactions) {
+    if (t.archived || !t.fingerprint || !t.importBatchId || t.source === 'manual') continue;
+    const key = `${t.accountId}|${t.fingerprint}`;
+    const g = groups.get(key) ?? [];
+    g.push(t);
+    groups.set(key, g);
+  }
+  const out: RepeatedImport[] = [];
+  for (const g of groups.values()) {
+    const perBatch = new Map<string, number>();
+    for (const t of g) perBatch.set(t.importBatchId!, (perBatch.get(t.importBatchId!) ?? 0) + 1);
+    const maxInOneFile = Math.max(...perBatch.values());
+    if (perBatch.size >= 2 && g.length > maxInOneFile) {
+      const first = g[0]!;
+      out.push({
+        accountId: first.accountId,
+        fingerprint: first.fingerprint!,
+        description: first.description,
+        date: first.date,
+        amountCents: first.amountCents,
+        copies: g.length,
+        maxInOneFile,
+      });
+    }
+  }
+  return out;
+}
+
 export interface StagingSummary {
   totalRows: number;
   invalid: number;

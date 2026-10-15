@@ -1,3 +1,4 @@
+import { findRepeatedImports } from '../imports/staging';
 import type { Transaction } from '../models';
 import { type IsoDate, addDays, diffDays, endOfMonth, startOfMonth } from '../dates';
 import { type Cents, formatZAR } from '../money';
@@ -230,6 +231,22 @@ export function buildDashboard(input: AvailableToSpendInput): DashboardModel {
         link: { to: '/goals', label: 'Review goal' },
       });
     }
+  }
+  const repeated = findRepeatedImports(input.transactions.filter((t) => inView(t.workspace, view)));
+  if (repeated.length > 0) {
+    const extra = repeated.reduce((s, r) => s + r.copies - r.maxInOneFile, 0);
+    alerts.push({
+      id: 'repeated-imports',
+      tone: 'warning',
+      title: `${extra} imported transaction${extra === 1 ? '' : 's'} may be counted twice`,
+      detail: `The same statement rows appear in more than one import (for example imported on two devices while offline): ${repeated
+        .slice(0, 3)
+        .map((r) => `${r.description} on ${r.date}`)
+        .join(
+          '; ',
+        )}${repeated.length > 3 ? '…' : ''}. Archive the extra copies or undo one of the imports.`,
+      link: { to: '/import', label: 'Import history' },
+    });
   }
   if (ats.needsReviewCount > 0) {
     alerts.push({

@@ -1,3 +1,5 @@
+import { SyncCard } from './SyncCard';
+import { useSync } from '@/app/SyncContext';
 import { Link } from 'react-router';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { IS_ARTIFACT } from '@/app/env';
@@ -332,6 +334,7 @@ function BackupText({ text, onClose }: { text: string; onClose: () => void }) {
 }
 
 function DataManagement() {
+  const sync = useSync();
   const { store, today } = useApp();
   const { run, statusNode, setStatus } = useStatus();
   const confirm = useConfirm();
@@ -373,9 +376,9 @@ function DataManagement() {
     <>
       <Card title="Backup, restore and moving devices">
         <p className="small">
-          Your data lives only in this browser on this device. It does not sync between your iPhone
-          and PC, and it can be lost if browser data is cleared. Back up regularly and keep the
-          backup somewhere private.
+          {sync
+            ? 'Your data syncs to your account, but a backup is still your safety net against mistakes (for example deleting something on one device deletes it everywhere). Back up regularly and keep the backup somewhere private.'
+            : 'Your data lives only in this browser on this device. It does not sync between your iPhone and PC, and it can be lost if browser data is cleared. Back up regularly and keep the backup somewhere private.'}
         </p>
         <p className="small">
           <strong>To move your data to another device:</strong> copy the backup text here, send it
@@ -583,7 +586,8 @@ function DataManagement() {
 
       <Card title="Delete all data">
         <p className="small">
-          Permanently removes every account, transaction, goal and setting from this device.
+          Permanently removes every account, transaction, goal and setting from this device
+          {sync ? ' and from your synced account' : ''}.
         </p>
         <button
           type="button"
@@ -591,7 +595,9 @@ function DataManagement() {
           onClick={async () => {
             const ok = await confirm({
               title: 'Delete all data on this device?',
-              message: 'This cannot be undone. Copy a backup first if you might need it.',
+              message: sync
+                ? 'This also deletes your data from your account, so it disappears from all your devices. It cannot be undone. Copy a backup first if you might need it.'
+                : 'This cannot be undone. Copy a backup first if you might need it.',
               confirmLabel: 'Delete everything',
               danger: true,
               requireText: 'DELETE',
@@ -622,6 +628,7 @@ export function SettingsPage() {
         <h1>Settings</h1>
       </div>
       <div className="grid">
+        <SyncCard />
         <Card title="Budget settings">
           <PlanForm
             key={data.settings.updatedAt}

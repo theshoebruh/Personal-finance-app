@@ -1,3 +1,5 @@
+import { useSync } from '@/app/SyncContext';
+import { statusText } from '@/features/settings/SyncCard';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useApp, useFinanceData } from '@/app/AppContext';
@@ -32,6 +34,7 @@ export function DashboardPage() {
   const data = useFinanceData();
   const { run, statusNode } = useStatus();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const sync = useSync();
 
   const model = useMemo(
     () =>
@@ -64,8 +67,11 @@ export function DashboardPage() {
         <Card className="hero">
           <h2>Let's work out what is safe to spend</h2>
           <p className="muted">
-            Everything is stored privately on this device. No bank login is needed — you add
-            accounts and import CSV statements or add transactions yourself.
+            {sync
+              ? 'Your data syncs to your own account so it appears on your other devices.'
+              : 'Everything is stored privately on this device.'}{' '}
+            No bank login is needed — you add accounts and import CSV statements or add transactions
+            yourself.
           </p>
           <ol className="stack">
             <li>
@@ -116,6 +122,24 @@ export function DashboardPage() {
         <WorkspaceSwitcher value={view} onChange={setView} />
       </div>
 
+      {sync &&
+        (sync.status.conflicts > 0 ||
+          sync.status.failed > 0 ||
+          sync.status.state === 'signed_out' ||
+          sync.status.state === 'error') && (
+          <Alert
+            tone="warning"
+            action={
+              <Link className="btn btn-sm" to="/settings">
+                Review sync
+              </Link>
+            }
+          >
+            <p>
+              <strong>Sync needs attention:</strong> {statusText(sync.status)}.
+            </p>
+          </Alert>
+        )}
       {hasDemo && (
         <Alert tone="info">
           Demo data is loaded (marked <Badge kind="demo">Demo</Badge>).{' '}

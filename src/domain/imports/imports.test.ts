@@ -12,6 +12,7 @@ import {
   stageRows,
   summariseStaging,
   transactionFingerprint,
+  findRepeatedImports,
 } from '.';
 
 const signed: ColumnMapping = {
@@ -344,5 +345,36 @@ describe('running balance check', () => {
     ]);
     expect(c?.suggestInvertSign).toBe(true);
     expect(checkRunningBalance([r('2026-03-01', 1, 1)])).toBeNull();
+  });
+});
+
+describe('repeated imports across devices', () => {
+  const t = (id: string, batch: string, extra: Partial<Parameters<typeof makeTxn>[0]> = {}) =>
+    makeTxn({
+      id,
+      accountId: 'acc',
+      source: 'csv',
+      importBatchId: batch,
+      fingerprint: 'fp-coffee',
+      description: 'COFFEE',
+      date: '2026-03-02',
+      amountCents: -3_500,
+      ...extra,
+    });
+
+  it('flags a statement imported in two batches', () => {
+    const r = findRepeatedImports([t('a', 'b1'), t('b', 'b2')]);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ copies: 2, maxInOneFile: 1 });
+  });
+
+  it('allows genuine identical rows within one file, and ignores archived and manual entries', () => {
+    expect(findRepeatedImports([t('a', 'b1'), t('b', 'b1')])).toEqual([]);
+    // Two coffees in each of two overlapping statements = the same two purchases: still only 2 per file.
+    expect(
+      findRepeatedImports([t('a', 'b1'), t('b', 'b1'), t('c', 'b2'), t('d', 'b2')])[0],
+    ).toMatchObject({ copies: 4, maxInOneFile: 2 });
+    expect(findRepeatedImports([t('a', 'b1'), t('b', 'b2', { archived: true })])).toEqual([]);
+    expect(findRepeatedImports([t('a', 'b1'), t('b', 'b2', { accountId: 'other' })])).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import { useSync } from '@/app/SyncContext';
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -622,6 +623,8 @@ export function ImportPage() {
   const [rows, setRows] = useState<StagedRow[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+  const sync = useSync();
 
   const activeAccounts = useMemo(() => (data ? data.accounts.filter((a) => a.active) : []), [data]);
   if (!data) return <Loading />;
@@ -630,8 +633,19 @@ export function ImportPage() {
   async function onFile(file: File) {
     setFileError(null);
     setDone(null);
+    setSyncNote(null);
     try {
       checkImportFile(file);
+      if (sync) {
+        // Fetch imports made on other devices first, so they count as duplicates here.
+        await sync.engine
+          .syncNow()
+          .catch(() =>
+            setSyncNote(
+              'Couldn’t check for imports made on your other devices (offline). Duplicates are checked against this device only.',
+            ),
+          );
+      }
       const p = await prepareImport(store, {
         accountId,
         text: await readFileText(file),
@@ -743,6 +757,7 @@ export function ImportPage() {
           )}
         </Card>
 
+        {syncNote && prepared && <Alert tone="warning">{syncNote}</Alert>}
         {prepared && <MappingCard prepared={prepared} onChange={(m) => void onMapping(m)} />}
         {prepared && prepared.staging.mappingErrors.length === 0 && (
           <ReviewCard
