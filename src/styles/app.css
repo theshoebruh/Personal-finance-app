@@ -794,3 +794,28 @@ legend {
   align-items: baseline;
   gap: var(--space-3);
 }
+
+/* Confirmation dialog */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(5, 6, 9, 0.7);
+}
+.dialog {
+  width: min(440px, 100%);
+  display: grid;
+  gap: var(--space-4);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+.dialog h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}

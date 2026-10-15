@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useApp, useFinanceData } from '@/app/AppContext';
 import {
   type ColumnMapping,
@@ -540,6 +541,7 @@ function ReviewCard({
 function HistoryCard() {
   const { db, store } = useApp();
   const { run, statusNode } = useStatus();
+  const confirm = useConfirm();
   const batches = useLiveQuery(() => db.importBatches.orderBy('id').toArray(), [db]);
   const accounts = useLiveQuery(() => db.accounts.toArray(), [db]);
   if (!batches || !accounts) return null;
@@ -577,13 +579,23 @@ function HistoryCard() {
                     onClick={() =>
                       void run(async () => {
                         const edited = await editedSinceImport(store, b.id);
-                        const msg =
-                          `Undo this import and remove its ${b.transactionCount} transactions?` +
-                          (edited > 0
-                            ? `\n\n${edited} of them were edited after import; those changes will be lost.`
-                            : '');
-                        if (!window.confirm(msg)) return;
-                        await undoImport(store, b.id);
+                        const ok = await confirm({
+                          title: `Undo import of ${b.fileName ?? 'this statement'}?`,
+                          message: (
+                            <>
+                              <p>This removes the {b.transactionCount} transactions it added.</p>
+                              {edited > 0 && (
+                                <p>
+                                  {edited} of them were edited after import; those changes will be
+                                  lost.
+                                </p>
+                              )}
+                            </>
+                          ),
+                          confirmLabel: 'Undo import',
+                          danger: true,
+                        });
+                        if (ok) await undoImport(store, b.id);
                       })
                     }
                   >

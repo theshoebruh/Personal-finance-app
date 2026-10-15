@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useApp, useFinanceData, type FinanceData } from '@/app/AppContext';
 import {
   CATEGORY_GROUP_LABELS,
@@ -528,6 +529,7 @@ function RecurringForm({
 function RecurringItems({ data }: { data: FinanceData }) {
   const { store, today, view } = useApp();
   const { run, statusNode, setStatus } = useStatus();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<RecurringRule | 'new' | null>(null);
   const [salaryAccount, setSalaryAccount] = useState('');
   const categories = lookup(data.categories);
@@ -672,14 +674,14 @@ function RecurringItems({ data }: { data: FinanceData }) {
                   <button
                     type="button"
                     className="btn btn-sm btn-danger"
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Delete recurring item "${r.name}"? Recorded transactions are not affected.`,
-                        )
-                      ) {
-                        void run(() => deleteRecurringRule(store, r.id), 'Deleted');
-                      }
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: `Delete “${r.name}”?`,
+                        message: 'Recorded transactions are not affected.',
+                        confirmLabel: 'Delete',
+                        danger: true,
+                      });
+                      if (ok) void run(() => deleteRecurringRule(store, r.id), 'Deleted');
                     }}
                   >
                     Delete

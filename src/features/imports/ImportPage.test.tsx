@@ -62,11 +62,11 @@ it('imports a CSV after review and can undo it', async () => {
   expect(await within(history).findByText('march.csv')).toBeInTheDocument();
   expect(within(history).getByText('1 skipped')).toBeInTheDocument();
 
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
   await user.click(within(history).getByRole('button', { name: 'Undo import' }));
+  const dialog = await screen.findByRole('alertdialog', { name: /Undo import of march\.csv/ });
+  await user.click(within(dialog).getByRole('button', { name: 'Undo import' }));
   await waitFor(async () => expect(await store.transactions.list()).toHaveLength(0));
   expect(await within(history).findByText('Undone')).toBeInTheDocument();
-  confirm.mockRestore();
 });
 
 it('explains that Excel workbooks must be saved as CSV', async () => {

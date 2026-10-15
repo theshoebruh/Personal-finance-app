@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useApp, useFinanceData } from '@/app/AppContext';
 import {
   TRANSACTION_SOURCES,
@@ -41,6 +42,7 @@ export function TransactionsPage() {
   const { store, view, setView, today } = useApp();
   const data = useFinanceData();
   const { run, statusNode, setStatus } = useStatus();
+  const confirm = useConfirm();
   const [params] = useSearchParams();
   const [panel, setPanel] = useState<Panel>(params.get('new') === '1' ? { kind: 'new' } : null);
   const [search, setSearch] = useState('');
@@ -471,12 +473,18 @@ export function TransactionsPage() {
                             type="button"
                             className="btn btn-sm btn-danger"
                             aria-label={`Delete ${t.description}`}
-                            onClick={() => {
-                              const msg =
-                                t.type === 'transfer'
-                                  ? 'Delete both sides of this transfer permanently?'
-                                  : `Delete "${t.description}" permanently?`;
-                              if (window.confirm(msg)) {
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title:
+                                  t.type === 'transfer'
+                                    ? 'Delete both sides of this transfer?'
+                                    : `Delete “${t.description}”?`,
+                                message:
+                                  'This cannot be undone. Archive it instead to keep a record.',
+                                confirmLabel: 'Delete',
+                                danger: true,
+                              });
+                              if (ok) {
                                 void run(
                                   () => deleteTransactionPermanently(store, t.id),
                                   'Deleted',
