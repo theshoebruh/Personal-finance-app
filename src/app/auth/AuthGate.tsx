@@ -10,6 +10,7 @@ import { prepareDevice } from '@/data/sync/bootstrap';
 import { type SyncRemote, createSupabaseRemote } from '@/data/sync/remote';
 import { SyncEngine, type SyncStatus } from '@/data/sync/syncEngine';
 import { createTrackedStore } from '@/data/sync/trackedStore';
+import { subscribeToChanges } from '@/data/sync/realtime';
 import { exportBackup, restoreBackup } from '@/services/backupService';
 import { SetNewPassword, SignInScreen } from './SignInScreen';
 
@@ -108,14 +109,7 @@ function SyncedApp({
     const store = createTrackedStore(db, () => engine?.notifyLocalChange());
     engine = new SyncEngine(db, createRemote(client));
     const unsubscribe = engine.subscribe(setStatus);
-    const channel = client
-      .channel(`sync-${userId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', filter: `user_id=eq.${userId}` },
-        () => engine?.notifyLocalChange(500),
-      )
-      .subscribe();
+    const stopListening = subscribeToChanges(client, userId, () => engine?.notifyLocalChange(500));
 
     prepareDevice(engine, store)
       .then(() => {
@@ -138,7 +132,7 @@ function SyncedApp({
       cancelled = true;
       unsubscribe();
       engine?.stop();
-      void client.removeChannel(channel);
+      stopListening();
       db.close();
     };
   }, [client, userId, createRemote, attempt]);

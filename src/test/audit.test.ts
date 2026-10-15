@@ -31,6 +31,7 @@ import { prepareDevice } from '@/data/sync/bootstrap';
 import { REMOTE_TABLES, toRow } from '@/data/sync/rowMapping';
 import { createAccount } from '@/services/accountsService';
 import {
+  bulkSetCategory,
   createTransaction,
   createTransfer,
   updateTransaction,
@@ -386,7 +387,7 @@ describe('confirmed issues (it.fails = problem still present)', () => {
   );
 
   // F-06: a transaction can carry a category of the wrong kind (income with an expense category).
-  it.fails('F-06: an income transaction cannot be given an expense category', async () => {
+  it('F-06: an income transaction cannot be given an expense category', async () => {
     const db = newDb();
     const store = createDexieStore(db);
     await ensureInitialised(store);
@@ -410,42 +411,43 @@ describe('confirmed issues (it.fails = problem still present)', () => {
     ).rejects.toThrow();
   });
 
-  // F-07: if the server copy of a conflicting record can't be read (e.g. a future schema change),
-  // the engine treats it as deleted and removes this device's record.
-  it.fails(
-    'F-07: an unreadable server copy in a conflict never deletes the local record',
-    async () => {
-      const remote = new FakeRemote();
-      const db = newDb();
-      const store = createTrackedStore(db);
-      const engine = new SyncEngine(db, remote);
-      await prepareDevice(engine, store);
-      const acc = await createAccount(store, {
-        name: 'Mine',
-        type: 'current',
-        workspace: 'personal',
-        openingBalanceCents: 0,
-        openingBalanceDate: '2026-03-01',
-        includeInSpendable: true,
-      });
-      // Another device already stored a row the app can't parse under the same id.
-      const bad = { ...toRow('accounts', acc), name: '' };
-      remote.rows.set(`${REMOTE_TABLES.accounts}:${acc.id}`, {
-        table: 'accounts',
-        id: acc.id,
-        revision: 1,
-        deleted: false,
-        ts: '2026-01-01T00:00:00.000001+00:00',
-        record: bad,
-      });
-      await engine.syncNow();
-      expect(await db.accounts.get(acc.id)).toBeDefined();
-    },
-  );
+  // F-07 (fixed): if the server copy of a conflicting record can't be read (e.g. a future schema
+  // change), the local record is kept and the change is parked as failed with a clear reason.
+  it('F-07: an unreadable server copy in a conflict never deletes the local record', async () => {
+    const remote = new FakeRemote();
+    const db = newDb();
+    const store = createTrackedStore(db);
+    const engine = new SyncEngine(db, remote);
+    await prepareDevice(engine, store);
+    const acc = await createAccount(store, {
+      name: 'Mine',
+      type: 'current',
+      workspace: 'personal',
+      openingBalanceCents: 0,
+      openingBalanceDate: '2026-03-01',
+      includeInSpendable: true,
+    });
+    // Another device already stored a row the app can't parse under the same id.
+    const bad = { ...toRow('accounts', acc), name: '' };
+    remote.rows.set(`${REMOTE_TABLES.accounts}:${acc.id}`, {
+      table: 'accounts',
+      id: acc.id,
+      revision: 1,
+      deleted: false,
+      ts: '2026-01-01T00:00:00.000001+00:00',
+      record: bad,
+    });
+    const report = await engine.syncNow();
+    expect(await db.accounts.get(acc.id)).toMatchObject({ name: 'Mine' });
+    expect(report.failed).toBe(1);
+    const [failed] = await engine.failedChanges();
+    expect(failed?.failedReason).toMatch(/could not be read/);
+    expect(await engine.listConflicts()).toEqual([]);
+  });
 
-  // F-08: "Load demo data" is guarded per device. Two devices loading it before syncing end up
-  // with two full demo sets after sync.
-  it.fails('F-08: demo data loaded on two devices before syncing is not duplicated', async () => {
+  // F-08 (fixed): demo records have fixed ids, so two devices loading demo data before syncing
+  // converge on one set (identical content resolves without a conflict).
+  it('F-08: demo data loaded on two devices before syncing is not duplicated', async () => {
     const remote = new FakeRemote();
     const devices = [newDb(), newDb()].map((db) => {
       const store = createTrackedStore(db);
@@ -457,5 +459,65 @@ describe('confirmed issues (it.fails = problem still present)', () => {
     await devices[0]!.engine.syncNow();
     const demoAccounts = (await devices[0]!.db.accounts.toArray()).filter((a) => a.isDemo);
     expect(demoAccounts).toHaveLength(3);
+  });
+});
+
+describe('F-06 category kind (fixed)', () => {
+  it('rejects mismatches on edit and skips them in bulk', async () => {
+    const db = newDb();
+    const store = createDexieStore(db);
+    await ensureInitialised(store);
+    const acc = await createAccount(store, {
+      name: 'A',
+      type: 'current',
+      workspace: 'personal',
+      openingBalanceCents: 0,
+      openingBalanceDate: '2026-03-01',
+      includeInSpendable: true,
+    });
+    const income = await createTransaction(store, {
+      accountId: acc.id,
+      date: '2026-03-02',
+      description: 'Salary',
+      amountCents: 10_000,
+      type: 'income',
+      categoryId: 'cat-salary',
+    });
+    const spend = await createTransaction(store, {
+      accountId: acc.id,
+      date: '2026-03-02',
+      description: 'Shop',
+      amountCents: 5_000,
+      type: 'expense',
+      categoryId: null,
+    });
+    const refund = await createTransaction(store, {
+      accountId: acc.id,
+      date: '2026-03-03',
+      description: 'Refund',
+      amountCents: 1_000,
+      type: 'refund',
+      categoryId: 'cat-groceries',
+    });
+    expect(refund.categoryId).toBe('cat-groceries'); // refunds use spending categories
+    await expect(updateTransaction(store, income.id, { type: 'expense' })).rejects.toThrow(
+      /income category; choose a spending/,
+    );
+    await expect(
+      createTransaction(store, {
+        accountId: acc.id,
+        date: '2026-03-02',
+        description: 'Fix',
+        amountCents: 1,
+        type: 'adjustment',
+        categoryId: 'cat-groceries',
+      }),
+    ).rejects.toThrow(/don’t take a category/);
+    expect(await bulkSetCategory(store, [income.id, spend.id], 'cat-groceries')).toEqual({
+      updated: 1,
+      skipped: 1,
+    });
+    expect((await store.transactions.get(income.id))?.categoryId).toBe('cat-salary');
+    expect((await store.transactions.get(spend.id))?.categoryId).toBe('cat-groceries');
   });
 });

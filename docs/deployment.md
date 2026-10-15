@@ -122,7 +122,7 @@ project for Preview variables.
   storage separate from Safari, so sign in once inside it.
 - **Windows (Edge/Chrome):** open the site → the install icon in the address bar (or menu → Apps →
   Install).
-- Both devices sign in with the same account; changes sync within about a minute (or when you reopen the app) while online and queue
+- Both devices sign in with the same account; changes appear on the other device within seconds while online and queue
   while offline.
 
 ## Troubleshooting

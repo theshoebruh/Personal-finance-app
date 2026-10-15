@@ -20,11 +20,12 @@ export function defaultIncludeInSpendable(type: AccountType): boolean {
 export async function createAccount(
   store: FinanceStore,
   input: AccountInput,
-  opts: { isDemo?: boolean; clock?: Clock } = {},
+  /** `id` fixes the record id (demo data uses it so every device writes the same records). */
+  opts: { isDemo?: boolean; clock?: Clock; id?: string } = {},
 ): Promise<Account> {
   const now = (opts.clock ?? systemClock).now();
   return store.accounts.put({
-    id: newId(),
+    id: opts.id ?? newId(),
     name: input.name,
     type: input.type,
     workspace: input.workspace,

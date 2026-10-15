@@ -358,7 +358,7 @@ export function TransactionsPage() {
                 disabled={!bulkCategory}
                 onClick={() =>
                   void run(async () => {
-                    const n = await bulkSetCategory(
+                    const { updated, skipped } = await bulkSetCategory(
                       store,
                       [...selected],
                       bulkCategory === '__none' ? null : bulkCategory,
@@ -366,8 +366,12 @@ export function TransactionsPage() {
                     setSelected(new Set());
                     setBulkCategory('');
                     setStatus({
-                      tone: 'success',
-                      text: `Updated ${n} transaction${n === 1 ? '' : 's'}`,
+                      tone: skipped > 0 ? 'info' : 'success',
+                      text:
+                        `Updated ${updated} transaction${updated === 1 ? '' : 's'}` +
+                        (skipped > 0
+                          ? `. ${skipped} skipped: that category doesn’t fit them (e.g. income needs an income category).`
+                          : ''),
                     });
                   })
                 }

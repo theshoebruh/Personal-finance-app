@@ -181,8 +181,13 @@ describe('CSV import', () => {
 
   it('undoes a batch, keeps the audit record, and allows re-importing', async () => {
     const { result } = await importText(MARCH);
-    const [first] = await store.transactions.byImportBatch(result.batch.id);
-    await bulkSetCategory(store, [first!.id], 'cat-salary');
+    const salary = (await store.transactions.byImportBatch(result.batch.id)).find(
+      (t) => t.amountCents > 0,
+    );
+    expect(await bulkSetCategory(store, [salary!.id], 'cat-salary')).toEqual({
+      updated: 1,
+      skipped: 0,
+    });
     expect(await editedSinceImport(store, result.batch.id)).toBe(1);
     expect(await undoImport(store, result.batch.id)).toBe(4);
     expect(await store.transactions.list()).toHaveLength(0);

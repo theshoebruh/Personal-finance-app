@@ -51,25 +51,48 @@ async function requireAccount(store: FinanceStore, id: string): Promise<Account>
   return account;
 }
 
-async function checkCategory(store: FinanceStore, categoryId: string | null, account: Account) {
+/** Money in uses income categories; expenses and refunds use expense categories. */
+export function categoryKindFor(type: TransactionType): 'income' | 'expense' | null {
+  if (type === 'income') return 'income';
+  if (type === 'expense' || type === 'refund') return 'expense';
+  return null; // adjustments and transfers take no category
+}
+
+async function checkCategory(
+  store: FinanceStore,
+  categoryId: string | null,
+  account: Account,
+  type: TransactionType,
+) {
   if (categoryId === null) return;
   const cat = await store.categories.get(categoryId);
   if (!cat) throw new DomainError('Category not found');
   if (cat.workspace !== 'both' && cat.workspace !== account.workspace) {
     throw new DomainError(`"${cat.name}" is not a ${account.workspace} category`);
   }
+  const kind = categoryKindFor(type);
+  if (kind === null) {
+    throw new DomainError('Balance adjustments and transfers don’t take a category');
+  }
+  if (cat.kind !== kind) {
+    throw new DomainError(
+      kind === 'income'
+        ? `"${cat.name}" is a spending category; choose an income category for income`
+        : `"${cat.name}" is an income category; choose a spending category`,
+    );
+  }
 }
 
 export async function createTransaction(
   store: FinanceStore,
   input: TransactionInput,
-  opts: { isDemo?: boolean; clock?: Clock } = {},
+  opts: { isDemo?: boolean; clock?: Clock; id?: string } = {},
 ): Promise<Transaction> {
   const account = await requireAccount(store, input.accountId);
-  await checkCategory(store, input.categoryId, account);
+  await checkCategory(store, input.categoryId, account, input.type);
   const now = (opts.clock ?? systemClock).now();
   return store.transactions.put({
-    id: newId(),
+    id: opts.id ?? newId(),
     accountId: account.id,
     date: input.date,
     description: input.description,
@@ -103,8 +126,8 @@ export async function updateTransaction(
   const accountId = input.accountId ?? existing.accountId;
   const account = await requireAccount(store, accountId);
   const categoryId = input.categoryId !== undefined ? input.categoryId : existing.categoryId;
-  await checkCategory(store, categoryId, account);
   const type = input.type ?? (existing.type as SimpleTransactionType);
+  await checkCategory(store, categoryId, account, type);
   const magnitude = input.amountCents ?? Math.abs(existing.amountCents);
   const direction = input.adjustmentDirection ?? (existing.amountCents >= 0 ? 'in' : 'out');
   const next: Transaction = {
@@ -150,7 +173,12 @@ export interface TransferInput {
 export async function createTransfer(
   store: FinanceStore,
   input: TransferInput,
-  opts: { isDemo?: boolean; clock?: Clock } = {},
+  /** `ids` fixes the record ids (demo data uses it so every device writes the same records). */
+  opts: {
+    isDemo?: boolean;
+    clock?: Clock;
+    ids?: { transfer: string; out: string; into: string };
+  } = {},
 ): Promise<[Transaction, Transaction]> {
   if (input.fromAccountId === input.toAccountId) {
     throw new DomainError('Choose two different accounts for a transfer');
@@ -161,7 +189,7 @@ export async function createTransfer(
   const from = await requireAccount(store, input.fromAccountId);
   const to = await requireAccount(store, input.toAccountId);
   const now = (opts.clock ?? systemClock).now();
-  const transferId = newId();
+  const transferId = opts.ids?.transfer ?? newId();
   const kind = transferKindFor(from, to);
   const base = {
     date: input.date,
@@ -180,7 +208,7 @@ export async function createTransfer(
   };
   const out: Transaction = {
     ...base,
-    id: newId(),
+    id: opts.ids?.out ?? newId(),
     accountId: from.id,
     workspace: from.workspace,
     amountCents: -input.amountCents,
@@ -188,7 +216,7 @@ export async function createTransfer(
   };
   const into: Transaction = {
     ...base,
-    id: newId(),
+    id: opts.ids?.into ?? newId(),
     accountId: to.id,
     workspace: to.workspace,
     amountCents: input.amountCents,
@@ -280,19 +308,35 @@ export async function deleteTransactionPermanently(store: FinanceStore, id: stri
   });
 }
 
+/**
+ * Sets one category on many transactions. Transactions the category can't apply to (transfers,
+ * adjustments, or the wrong kind — e.g. income given a spending category) are left unchanged and
+ * counted as skipped.
+ */
 export async function bulkSetCategory(
   store: FinanceStore,
   ids: readonly string[],
   categoryId: string | null,
   clock: Clock = systemClock,
-): Promise<number> {
+): Promise<{ updated: number; skipped: number }> {
   const now = clock.now();
   const updated: Transaction[] = [];
+  let skipped = 0;
   for (const id of ids) {
     const t = await store.transactions.get(id);
-    if (!t || t.type === 'transfer') continue;
+    if (!t) continue;
     const account = await requireAccount(store, t.accountId);
-    await checkCategory(store, categoryId, account);
+    try {
+      await checkCategory(store, categoryId, account, t.type);
+    } catch (e) {
+      if (!(e instanceof DomainError) || categoryId === null) throw e;
+      skipped++;
+      continue;
+    }
+    if (t.type === 'transfer' || t.type === 'adjustment') {
+      skipped++;
+      continue;
+    }
     updated.push({
       ...t,
       categoryId,
@@ -301,5 +345,5 @@ export async function bulkSetCategory(
     });
   }
   await store.atomic(() => store.transactions.bulkPut(updated));
-  return updated.length;
+  return { updated: updated.length, skipped };
 }

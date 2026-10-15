@@ -2,6 +2,7 @@
  * Audit tests against the local stack (2026-10-15). `it.fails` = confirmed problem still present;
  * flip to `it` once fixed. See docs/audit-2026-10-15.md.
  */
+import { subscribeToChanges } from '@/data/sync/realtime';
 import { accountRow, newUser, push, txnRow, upsert, type TestUser } from './helpers';
 
 let user: TestUser;
@@ -54,26 +55,25 @@ describe('Realtime notifications', () => {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, on);
       await subscribed(ch);
     });
+    // Realtime reports SUBSCRIBED slightly before change delivery is live.
+    await new Promise((r) => setTimeout(r, 1500));
     await push(user.client, [upsert('transactions', txnRow('rt-1', 'acc-1'))]);
     expect(await mine.wait()).toBe(true);
     expect(await spy.wait(2000)).toBe(false);
   });
 
-  // F-01: the app subscribes to the whole schema with a user_id filter (no table). Realtime does not
-  // deliver those events, so cross-device updates only arrive via the periodic/focus/reconnect sync.
-  it.fails('F-01: the app’s schema-wide filtered subscription receives changes', async () => {
-    const appStyle = await waitForEvent(async (on) => {
-      const ch = user.client
-        .channel(`audit-app-${Date.now()}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', filter: `user_id=eq.${user.id}` },
-          on,
-        );
-      await subscribed(ch);
+  // F-01 (fixed): the app's own subscription helper receives the user's changes.
+  it('F-01: the app’s subscription receives changes made on another session', async () => {
+    let got = false;
+    const stop = subscribeToChanges(user.client, user.id, () => {
+      got = true;
     });
+    await new Promise((r) => setTimeout(r, 1500)); // let the channel join
     await push(user.client, [upsert('transactions', txnRow('rt-2', 'acc-1'))]);
-    expect(await appStyle.wait()).toBe(true);
+    const t0 = Date.now();
+    while (!got && Date.now() - t0 < 6000) await new Promise((r) => setTimeout(r, 200));
+    stop();
+    expect(got).toBe(true);
   });
 });
 

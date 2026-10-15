@@ -306,8 +306,9 @@ export class SyncEngine {
         await this.markApplied(entry, result);
         totals.applied++;
       } else {
-        const conflicted = await this.handleConflict(entry, result);
-        if (conflicted) totals.conflicts++;
+        const outcome = await this.handleConflict(entry, result);
+        if (outcome === 'conflict') totals.conflicts++;
+        else if (outcome === 'failed') totals.failed++;
         else totals.applied++;
       }
     }
@@ -333,7 +334,10 @@ export class SyncEngine {
    * otherwise the server version is applied and this device's version is kept as a conflict.
    * Returns true when a real conflict was recorded.
    */
-  private async handleConflict(entry: OutboxEntry, result: PushResult): Promise<boolean> {
+  private async handleConflict(
+    entry: OutboxEntry,
+    result: PushResult,
+  ): Promise<'conflict' | 'resolved' | 'failed'> {
     const table = entry.table as SyncedTable;
     const remoteRow = result.record;
     const remoteDeleted = !remoteRow || Boolean(remoteRow.deleted);
@@ -343,7 +347,22 @@ export class SyncEngine {
         remote = fromRow<Record<string, unknown>>(table, remoteRow!);
       } catch (e) {
         if (!(e instanceof RemoteRecordError)) throw e;
-        remote = null;
+        // The synced copy exists but can't be read (e.g. it was written by a newer app version).
+        // Never treat that as a deletion: keep this device's record untouched and park the change
+        // as failed so the user sees it, instead of overwriting either side.
+        await this.db.transaction('rw', [this.db.outbox], async () => {
+          const latest = await this.db.outbox.get(entry.key);
+          if (latest && latest.queuedAt === entry.queuedAt) {
+            await this.db.outbox.put({
+              ...latest,
+              attempts: latest.attempts + 1,
+              failedReason:
+                'The synced copy of this record could not be read on this device, so it was not changed. ' +
+                'Update the app on all devices, then try again.',
+            });
+          }
+        });
+        return 'failed';
       }
     }
     let real = false;
@@ -389,7 +408,7 @@ export class SyncEngine {
         await this.db.outbox.delete(entry.key);
       },
     );
-    return real;
+    return real ? 'conflict' : 'resolved';
   }
 
   // ------------------------------------------------------------------ pull

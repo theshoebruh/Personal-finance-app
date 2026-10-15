@@ -217,7 +217,10 @@ describe('transactions', () => {
       type: 'expense',
       categoryId: null,
     });
-    expect(await bulkSetCategory(store, [a.id, b.id], 'cat-shopping')).toBe(2);
+    expect(await bulkSetCategory(store, [a.id, b.id], 'cat-shopping')).toEqual({
+      updated: 2,
+      skipped: 0,
+    });
     const updated = await store.transactions.get(a.id);
     expect(updated?.categoryId).toBe('cat-shopping');
     expect(updated?.status).toBe('posted');
