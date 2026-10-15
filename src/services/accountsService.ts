@@ -56,7 +56,10 @@ export async function updateAccount(
       );
     }
   }
-  return store.accounts.put({ ...existing, ...patch, updatedAt: clock.now() });
+  const next: Record<string, unknown> = { ...existing, ...patch, updatedAt: clock.now() };
+  // An explicit `undefined` in the patch clears an optional field.
+  for (const [key, value] of Object.entries(patch)) if (value === undefined) delete next[key];
+  return store.accounts.put(next as Account);
 }
 
 /** Archiving hides an account but keeps its transactions and history intact. */

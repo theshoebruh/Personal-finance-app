@@ -102,7 +102,7 @@ export async function loadDemoData(
     await tx(6, 'Uber', 9_500, 'expense', 'cat-transport');
     await tx(7, 'Checkers refund', 4_000, 'refund', 'cat-groceries');
     await tx(8, 'Unknown card purchase', 12_000, 'expense', null);
-    await createTransfer(
+    const [, savingsLeg] = await createTransfer(
       store,
       { fromAccountId: main.id, toAccountId: savings.id, date: day(2), amountCents: 100_000 },
       opts,
@@ -173,7 +173,24 @@ export async function loadDemoData(
     );
     await addGoalContribution(
       store,
-      { goalId: emergency.id, date: day(2), amountCents: 900_000, note: 'Demo balance' },
+      {
+        goalId: emergency.id,
+        // The savings account's opening balance was set aside before this month.
+        date: addDays(monthStart, -1),
+        amountCents: 800_000,
+        note: 'Opening savings balance',
+      },
+      opts,
+    );
+    await addGoalContribution(
+      store,
+      {
+        goalId: emergency.id,
+        date: day(2),
+        amountCents: 100_000,
+        transactionId: savingsLeg.id,
+        note: 'Monthly transfer to savings',
+      },
       opts,
     );
     const buffer = await saveGoal(
@@ -204,6 +221,10 @@ export async function loadDemoData(
           ['cat-entertainment', 50_000],
           ['cat-shopping', 100_000],
           ['cat-groceries', 300_000],
+          ['cat-housing', 450_000],
+          ['cat-utilities', 80_000],
+          ['cat-transport', 100_000],
+          ['cat-phone', 40_000],
         ] as const
       ).map(([categoryId, limitCents]) => ({
         id: `demo-budget-${categoryId}`,

@@ -45,7 +45,7 @@ export default defineConfig({
     cspPlugin(),
     VitePWA({
       registerType: 'prompt',
-      injectRegister: 'script',
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Personal Finance Hub',
