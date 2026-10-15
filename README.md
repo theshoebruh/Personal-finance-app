@@ -102,8 +102,8 @@ write is also queued in an outbox in the same transaction. The sync engine sends
 with the server revision the device last saw; the server applies a change only if nobody else changed
 that record since, otherwise it reports a **conflict**. The synced version is then shown, and this
 device's version is kept under Settings → Sync until you choose which to keep. It never silently
-overwrites. Deletions sync as tombstones. Changes arrive on other devices within seconds through
-Supabase Realtime, and on focus, reconnect and every minute otherwise. Every table has row-level
+overwrites. Deletions sync as tombstones. Changes reach other devices on app focus, when the network returns, and at least every
+minute. (Instant Supabase Realtime updates are wired up but not yet working: audit finding F-01.) Every table has row-level
 security limiting rows to their owner.
 
 ### How "available to spend" is calculated

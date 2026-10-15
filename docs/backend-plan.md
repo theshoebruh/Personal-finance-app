@@ -86,7 +86,8 @@ RLS is enabled and forced on every table. Policies for the `authenticated` role 
   "Keep the synced version". Identical content (ignoring timestamps) resolves automatically, which
   also makes retried pushes after a lost response harmless.
 - **When:** after local changes (debounced), on app focus, when the network returns, every 60 s,
-  and on Supabase Realtime notifications for instant cross-device updates. Exponential backoff on
+  and on Supabase Realtime notifications for instant cross-device updates (not yet working — see
+  audit finding F-01). Exponential backoff on
   errors. Status shown in the app: synced / syncing / offline / error / conflicts.
 - **First sync on a new device:** pull before seeding defaults, so a new device never overwrites
   your settings or categories with defaults.
