@@ -24,8 +24,10 @@ cp .env.example .env.local   # optional: fill in Supabase values to enable sign-
 npm run dev                  # http://localhost:5173
 ```
 
-With `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` empty, the app runs **local-only**: no
-sign-in, data stays in this browser. With them set, the whole app is behind sign-in and syncs. For a
+With `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` empty, the dev server runs
+**local-only**: no sign-in, data stays in this browser. With them set, the whole app is behind sign-in
+and syncs. Production builds require both (set `ALLOW_LOCAL_ONLY_BUILD=true` to build the local-only
+app on purpose). For a
 local Supabase stack: `npx supabase start && npx supabase db reset` (details in
 [`docs/deployment.md`](docs/deployment.md)).
 
@@ -48,14 +50,15 @@ local Supabase stack: `npx supabase start && npx supabase db reset` (details in
 
 ## Deployment (Cloudflare Pages)
 
-| Setting                | Value                                                                        |
-| ---------------------- | ---------------------------------------------------------------------------- |
-| Build command          | `npm run build`                                                              |
-| Build output directory | `dist`                                                                       |
-| Environment variables  | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `NODE_VERSION=20.19.0` |
+| Setting                | Value                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------- |
+| Build command          | `npm run build`                                                                 |
+| Build output directory | `dist`                                                                          |
+| Environment variables  | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (Node 20.19 from `.nvmrc`) |
 
-Both Supabase values are public by design (row-level security protects the data). Never use the
-secret/service-role key; the build refuses it. Full steps, including Supabase auth settings and
+Both Supabase values are public by design (row-level security protects the data). The build fails
+if either is missing, if only one is set, or if the key is a secret/service-role key, so a
+misconfigured deployment can't ship the app without sign-in and sync. Full steps, including Supabase auth settings and
 turning off sign-ups after creating your account, are in [`docs/deployment.md`](docs/deployment.md).
 
 ## Architecture

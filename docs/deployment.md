@@ -23,7 +23,9 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 npm run dev                 # http://localhost:5173 — sign-in screen, then the app
 ```
 
-Leave both variables empty to run the app local-only (no sign-in, no sync). Local Studio is at
+Leave both variables empty to run the app local-only (no sign-in, no sync). The dev server allows
+that, but `npm run build` stops with an error unless you also set `ALLOW_LOCAL_ONLY_BUILD=true` (see
+step 5). Local Studio is at
 http://127.0.0.1:54323 and test emails (password resets) arrive in Mailpit at http://127.0.0.1:54324.
 
 ## 2. Tests
@@ -94,13 +96,19 @@ Realtime needs no extra setup: the migration adds the tables to the `supabase_re
    | ------------------------------- | ----------------------------------- |
    | `VITE_SUPABASE_URL`             | `https://<project-ref>.supabase.co` |
    | `VITE_SUPABASE_PUBLISHABLE_KEY` | the publishable key                 |
-   | `NODE_VERSION`                  | `20.19.0` (also set in `.nvmrc`)    |
 
    These are build-time values embedded in the JavaScript. They are public by design; RLS protects
-   the data. There are no server secrets in this project.
+   the data. There are no server secrets in this project. The Node version comes from `.nvmrc`
+   (20.19.0), so `NODE_VERSION` isn't needed.
 
-4. Deploy. `public/_headers` adds HSTS, `nosniff`, framing protection, a strict referrer policy and
-   cache rules; the build injects a Content-Security-Policy that only allows your Supabase project.
+   **The build fails on purpose** if either variable is missing, if only one is set, or if the key is
+   a secret/service-role key, so a misconfigured deployment can't ship an app without sign-in and
+   sync. If a Preview build fails this way, add the variables to the Preview environment too. To
+   build the local-only app deliberately, set `ALLOW_LOCAL_ONLY_BUILD=true` instead.
+
+4. Deploy. `public/_headers` adds HSTS, `nosniff`, framing protection, strict referrer and
+   permissions policies, no-cache for the service worker and manifest, and long-lived caching for
+   hashed assets; the build injects a Content-Security-Policy that only allows your Supabase project.
    Unknown paths fall back to `index.html` (no `404.html`), which the app's routes need.
 5. Put the final URL (and any custom domain) into Supabase's Site URL / Redirect URLs (step 3.3).
 
@@ -119,9 +127,10 @@ project for Preview variables.
 
 ## Troubleshooting
 
-| Symptom                                                    | Likely cause                                                                |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Sign-in works but nothing syncs, console shows a CSP error | `VITE_SUPABASE_URL` at build time differs from the project you use; rebuild |
-| "This device needs to download your data once"             | First sign-in on a device while offline; connect and press Try again        |
-| Password-reset link opens the wrong site                   | Site URL / Redirect URLs in Supabase don't match the deployed URL           |
-| "Sync problem" with a constraint message                   | A record the server rejected; see Settings → Sync for the record and reason |
+| Symptom                                                    | Likely cause                                                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Build fails with `BuildEnvError`                           | A Supabase variable is missing (or only one is set, or it's a secret key) in that environment; set both in Cloudflare and retry |
+| Sign-in works but nothing syncs, console shows a CSP error | `VITE_SUPABASE_URL` at build time differs from the project you use; rebuild                                                     |
+| "This device needs to download your data once"             | First sign-in on a device while offline; connect and press Try again                                                            |
+| Password-reset link opens the wrong site                   | Site URL / Redirect URLs in Supabase don't match the deployed URL                                                               |
+| "Sync problem" with a constraint message                   | A record the server rejected; see Settings → Sync for the record and reason                                                     |

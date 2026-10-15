@@ -25,5 +25,12 @@
     "baseUrl": ".",
     "paths": { "@/*": ["src/*"] }
   },
-  "include": ["src", "supabase/tests", "vite.config.ts", "vitest.setup.ts", "vitest.db.config.ts"]
+  "include": [
+    "src",
+    "config",
+    "supabase/tests",
+    "vite.config.ts",
+    "vitest.setup.ts",
+    "vitest.db.config.ts"
+  ]
 }

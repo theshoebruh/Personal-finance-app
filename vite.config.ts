@@ -3,6 +3,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { checkBuildEnv } from './config/buildEnv';
 
 /**
  * Strict Content Security Policy, injected only into production builds (the dev server needs
@@ -44,42 +45,22 @@ function cspPlugin(supabaseUrl: string): Plugin {
   };
 }
 
-/** Stops a build that would ship a secret key or an insecure API URL to every visitor. */
-function checkPublicEnv(url: string, key: string, mode: string): void {
-  if (key.startsWith('sb_secret_')) {
-    throw new Error(
-      'VITE_SUPABASE_PUBLISHABLE_KEY is a secret key. Use the publishable (anon) key.',
-    );
-  }
-  const jwtPayload = key.split('.')[1];
-  if (jwtPayload) {
-    try {
-      const role = JSON.parse(Buffer.from(jwtPayload, 'base64url').toString('utf8')).role;
-      if (role === 'service_role') {
-        throw new Error('VITE_SUPABASE_PUBLISHABLE_KEY is the service_role key. Use the anon key.');
-      }
-    } catch (e) {
-      if (e instanceof Error && e.message.includes('service_role')) throw e;
-    }
-  }
-  if (url && mode === 'production') {
-    const u = new URL(url);
-    const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
-    if (u.protocol !== 'https:' && !local) {
-      throw new Error(`VITE_SUPABASE_URL must use https (got ${url}).`);
-    }
-  }
-}
-
 /**
  * `--mode artifact` builds a variant for the Claude artifact viewer: relative asset paths, a separate
  * entry (artifact.html) and no service worker or CSP meta (the viewer applies its own policy).
  */
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const artifact = mode === 'artifact';
-  const env = loadEnv(mode, process.cwd(), 'VITE_');
-  const supabaseUrl = artifact ? '' : (env.VITE_SUPABASE_URL ?? '');
-  checkPublicEnv(supabaseUrl, env.VITE_SUPABASE_PUBLISHABLE_KEY ?? '', mode);
+  const env = loadEnv(mode, process.cwd(), ['VITE_', 'ALLOW_LOCAL_ONLY_BUILD']);
+  // Production builds must include the Supabase settings (see config/buildEnv.ts).
+  const { url } = checkBuildEnv({
+    command,
+    mode,
+    url: env.VITE_SUPABASE_URL,
+    key: env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    allowLocalOnly: env.ALLOW_LOCAL_ONLY_BUILD,
+  });
+  const supabaseUrl = artifact ? '' : url;
   return {
     base: artifact ? './' : '/',
     resolve: {
@@ -139,7 +120,7 @@ export default defineConfig(({ mode }) => {
       setupFiles: ['./vitest.setup.ts'],
       // UI integration tests drive real IndexedDB queries; allow headroom on slower machines.
       testTimeout: 15_000,
-      include: ['src/**/*.test.{ts,tsx}'],
+      include: ['src/**/*.test.{ts,tsx}', 'config/**/*.test.ts'],
     },
   };
 });
