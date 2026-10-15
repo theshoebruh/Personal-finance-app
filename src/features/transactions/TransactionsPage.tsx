@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useApp, useFinanceData } from '@/app/AppContext';
 import {
   TRANSACTION_SOURCES,
@@ -30,7 +31,7 @@ import {
   useStatus,
 } from '@/components/ui';
 import { AccountOptions, CategoryOptions, lookup } from '../shared';
-import { TransactionForm, TransferForm } from './TransactionForms';
+import { ConvertToTransferPanel, TransactionForm, TransferForm } from './TransactionForms';
 
 type Sort = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
 type Panel = { kind: 'new' } | { kind: 'transfer' } | { kind: 'edit'; txn: Transaction } | null;
@@ -41,6 +42,7 @@ export function TransactionsPage() {
   const { store, view, setView, today } = useApp();
   const data = useFinanceData();
   const { run, statusNode, setStatus } = useStatus();
+  const confirm = useConfirm();
   const [params] = useSearchParams();
   const [panel, setPanel] = useState<Panel>(params.get('new') === '1' ? { kind: 'new' } : null);
   const [search, setSearch] = useState('');
@@ -124,15 +126,23 @@ export function TransactionsPage() {
   function editPanel(txn: Transaction) {
     if (txn.type !== 'transfer' || !txn.transferId) {
       return (
-        <TransactionForm
-          key={txn.id}
-          accounts={data!.accounts}
-          categories={data!.categories}
-          editing={txn}
-          today={today}
-          onDone={done}
-          onCancel={() => setPanel(null)}
-        />
+        <>
+          <TransactionForm
+            key={txn.id}
+            accounts={data!.accounts}
+            categories={data!.categories}
+            editing={txn}
+            today={today}
+            onDone={done}
+            onCancel={() => setPanel(null)}
+          />
+          <ConvertToTransferPanel
+            key={`conv-${txn.id}`}
+            txn={txn}
+            accounts={data!.accounts}
+            onDone={done}
+          />
+        </>
       );
     }
     const legs = data!.transactions.filter((t) => t.transferId === txn.transferId);
@@ -356,7 +366,7 @@ export function TransactionsPage() {
                 disabled={!bulkCategory}
                 onClick={() =>
                   void run(async () => {
-                    const n = await bulkSetCategory(
+                    const { updated, skipped } = await bulkSetCategory(
                       store,
                       [...selected],
                       bulkCategory === '__none' ? null : bulkCategory,
@@ -364,8 +374,12 @@ export function TransactionsPage() {
                     setSelected(new Set());
                     setBulkCategory('');
                     setStatus({
-                      tone: 'success',
-                      text: `Updated ${n} transaction${n === 1 ? '' : 's'}`,
+                      tone: skipped > 0 ? 'info' : 'success',
+                      text:
+                        `Updated ${updated} transaction${updated === 1 ? '' : 's'}` +
+                        (skipped > 0
+                          ? `. ${skipped} skipped: that category doesn’t fit them (e.g. income needs an income category).`
+                          : ''),
                     });
                   })
                 }
@@ -471,12 +485,18 @@ export function TransactionsPage() {
                             type="button"
                             className="btn btn-sm btn-danger"
                             aria-label={`Delete ${t.description}`}
-                            onClick={() => {
-                              const msg =
-                                t.type === 'transfer'
-                                  ? 'Delete both sides of this transfer permanently?'
-                                  : `Delete "${t.description}" permanently?`;
-                              if (window.confirm(msg)) {
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title:
+                                  t.type === 'transfer'
+                                    ? 'Delete both sides of this transfer?'
+                                    : `Delete “${t.description}”?`,
+                                message:
+                                  'This cannot be undone. Archive it instead to keep a record.',
+                                confirmLabel: 'Delete',
+                                danger: true,
+                              });
+                              if (ok) {
                                 void run(
                                   () => deleteTransactionPermanently(store, t.id),
                                   'Deleted',

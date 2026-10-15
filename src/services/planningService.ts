@@ -35,7 +35,7 @@ export async function saveRecurringRule(
   const existing = input.id ? await store.recurringRules.get(input.id) : undefined;
   const rule: RecurringRule = {
     ...input,
-    id: existing?.id ?? newId(),
+    id: existing?.id ?? input.id ?? newId(),
     settledDates: input.settledDates ?? existing?.settledDates ?? [],
     isDemo: existing?.isDemo ?? opts.isDemo ?? false,
     createdAt: existing?.createdAt ?? now,
@@ -209,7 +209,7 @@ export async function saveGoal(
   const existing = goal.id ? await store.goals.get(goal.id) : undefined;
   return store.goals.put({
     ...goal,
-    id: existing?.id ?? newId(),
+    id: existing?.id ?? goal.id ?? newId(),
     isDemo: existing?.isDemo ?? opts.isDemo ?? false,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
@@ -229,7 +229,7 @@ export async function addGoalContribution(
     transactionId?: string;
     note?: string;
   },
-  opts: { isDemo?: boolean; clock?: Clock } = {},
+  opts: { isDemo?: boolean; clock?: Clock; id?: string } = {},
 ): Promise<GoalContribution> {
   const goal = await store.goals.get(input.goalId);
   if (!goal) throw new DomainError('Goal not found');
@@ -243,7 +243,7 @@ export async function addGoalContribution(
   }
   const now = (opts.clock ?? systemClock).now();
   return store.goalContributions.put({
-    id: newId(),
+    id: opts.id ?? newId(),
     goalId: goal.id,
     date: input.date,
     amountCents: input.amountCents,

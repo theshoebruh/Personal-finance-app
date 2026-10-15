@@ -1,3 +1,5 @@
+import { useSync } from './SyncContext';
+import { SyncPill } from '@/features/settings/SyncCard';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 
@@ -24,6 +26,7 @@ const MOBILE_PRIMARY = ['/', '/transactions', '/budgets', '/goals'];
 
 export function Layout() {
   const [moreOpen, setMoreOpen] = useState(false);
+  const sync = useSync();
   const location = useLocation();
   useEffect(() => setMoreOpen(false), [location.pathname]);
 
@@ -46,7 +49,13 @@ export function Layout() {
           </NavLink>
         ))}
         <div className="sidebar-footer">
-          Data is stored on this device only. Back up regularly from Settings.
+          {sync ? (
+            <NavLink to="/settings" className="sync-pill-link">
+              <SyncPill />
+            </NavLink>
+          ) : (
+            'Data is stored on this device only. Back up regularly from Settings.'
+          )}
         </div>
       </nav>
 
@@ -56,6 +65,11 @@ export function Layout() {
 
       {moreOpen && (
         <nav className="more-menu" aria-label="More pages">
+          {sync && (
+            <NavLink to="/settings">
+              <SyncPill />
+            </NavLink>
+          )}
           {secondary.map((n) => (
             <NavLink key={n.to} to={n.to}>
               {n.label}

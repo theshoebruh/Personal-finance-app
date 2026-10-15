@@ -1,3 +1,4 @@
+import type { TransferSuggestion } from './transfers';
 import type { Account, Transaction } from '../models';
 import { type IsoDate, diffDays } from '../dates';
 import type { Cents } from '../money';
@@ -23,6 +24,10 @@ export interface StagedRow extends NormalisedRow {
   duplicateOf?: DuplicateMatch;
   /** Other lines in this file that look identical (e.g. two same-day coffees). Kept, but flagged. */
   identicalLines: number[];
+  /** Why this row may be a transfer between your own accounts (see transfers.ts). */
+  transferSuggestion?: TransferSuggestion | null;
+  /** The user's choice: import as a transfer with this account, or null for income/expense. */
+  transferAccountId?: string | null;
 }
 
 /** Days either side within which a manually entered transaction is treated as a possible match. */
@@ -231,6 +236,53 @@ export function checkRunningBalance(rows: readonly NormalisedRow[]): BalanceChec
   };
 }
 
+export interface RepeatedImport {
+  accountId: string;
+  fingerprint: string;
+  description: string;
+  date: IsoDate;
+  amountCents: Cents;
+  /** Copies across all import batches. */
+  copies: number;
+  /** Most copies inside any single file (identical same-day rows that are genuinely separate). */
+  maxInOneFile: number;
+}
+
+/**
+ * Finds imported rows that appear in two or more import batches more often than in any single
+ * file — typically the same statement imported on two devices while offline, which the per-device
+ * duplicate check could not see. Advisory: the user decides what to archive.
+ */
+export function findRepeatedImports(transactions: readonly Transaction[]): RepeatedImport[] {
+  const groups = new Map<string, Transaction[]>();
+  for (const t of transactions) {
+    if (t.archived || !t.fingerprint || !t.importBatchId || t.source === 'manual') continue;
+    const key = `${t.accountId}|${t.fingerprint}`;
+    const g = groups.get(key) ?? [];
+    g.push(t);
+    groups.set(key, g);
+  }
+  const out: RepeatedImport[] = [];
+  for (const g of groups.values()) {
+    const perBatch = new Map<string, number>();
+    for (const t of g) perBatch.set(t.importBatchId!, (perBatch.get(t.importBatchId!) ?? 0) + 1);
+    const maxInOneFile = Math.max(...perBatch.values());
+    if (perBatch.size >= 2 && g.length > maxInOneFile) {
+      const first = g[0]!;
+      out.push({
+        accountId: first.accountId,
+        fingerprint: first.fingerprint!,
+        description: first.description,
+        date: first.date,
+        amountCents: first.amountCents,
+        copies: g.length,
+        maxInOneFile,
+      });
+    }
+  }
+  return out;
+}
+
 export interface StagingSummary {
   totalRows: number;
   invalid: number;
@@ -244,6 +296,10 @@ export interface StagingSummary {
   dateRange: { from: IsoDate; to: IsoDate } | null;
   /** Selected rows dated before the account's opening-balance date (they won't change its balance). */
   beforeOpeningDate: number;
+  /** Selected rows that will be imported as transfers between your own accounts. */
+  transfers: number;
+  /** Rows with a transfer suggestion the user hasn't accepted. */
+  possibleTransfers: number;
 }
 
 export function summariseStaging(rows: readonly StagedRow[], account: Account): StagingSummary {
@@ -263,5 +319,7 @@ export function summariseStaging(rows: readonly StagedRow[], account: Account): 
     selectedOutCents: selected.reduce((s, r) => s + Math.max(0, -r.amountCents!), 0),
     dateRange: dates.length ? { from: dates[0]!, to: dates[dates.length - 1]! } : null,
     beforeOpeningDate: selected.filter((r) => r.date! < account.openingBalanceDate).length,
+    transfers: selected.filter((r) => r.transferAccountId).length,
+    possibleTransfers: selected.filter((r) => r.transferSuggestion && !r.transferAccountId).length,
   };
 }

@@ -1,4 +1,8 @@
+import { SyncCard } from './SyncCard';
+import { useSync } from '@/app/SyncContext';
 import { Link } from 'react-router';
+import { useConfirm } from '@/components/ConfirmDialog';
+import { IS_ARTIFACT } from '@/app/env';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useApp, useFinanceData, type FinanceData } from '@/app/AppContext';
 import { budgetableIncome, savingsRateWarning, savingsTarget } from '@/domain/calculations/income';
@@ -286,11 +290,59 @@ function downloadJson(data: unknown, fileName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function BackupText({ text, onClose }: { text: string; onClose: () => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [copied, setCopied] = useState<'yes' | 'select' | null>(null);
+  const copy = () => {
+    // Called directly in the click handler so the browser allows clipboard access.
+    navigator.clipboard
+      .writeText(text)
+      .then(() => setCopied('yes'))
+      .catch(() => {
+        ref.current?.select();
+        setCopied('select');
+      });
+  };
+  return (
+    <div className="panel stack" role="region" aria-label="Backup text">
+      <label className="small" htmlFor="backup-text">
+        Backup text ({(text.length / 1024).toFixed(0)} KB). Keep it private — it isn’t encrypted.
+      </label>
+      <textarea
+        id="backup-text"
+        ref={ref}
+        readOnly
+        rows={5}
+        value={text}
+        onFocus={(e) => e.target.select()}
+      />
+      <div className="btn-row">
+        <button type="button" className="btn btn-primary" onClick={copy}>
+          Copy to clipboard
+        </button>
+        <button type="button" className="btn" onClick={onClose}>
+          Close
+        </button>
+        <span className="small muted" aria-live="polite">
+          {copied === 'yes' && 'Copied.'}
+          {copied === 'select' &&
+            'Copying was blocked here. The text is selected — copy it manually.'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function DataManagement() {
+  const sync = useSync();
   const { store, today } = useApp();
   const { run, statusNode, setStatus } = useStatus();
+  const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<Backup | null>(null);
+  const [backupText, setBackupText] = useState<string | null>(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasted, setPasted] = useState('');
   const [demo, setDemo] = useState(false);
   const [storageInfo, setStorageInfo] = useState<{
     persisted: boolean | null;
@@ -301,9 +353,13 @@ function DataManagement() {
   useEffect(refreshDemo, [store]);
   useEffect(() => {
     void (async () => {
-      const persisted = navigator.storage?.persisted ? await navigator.storage.persisted() : null;
-      const est = navigator.storage?.estimate ? await navigator.storage.estimate() : undefined;
-      setStorageInfo({ persisted, ...(est?.usage !== undefined ? { usage: est.usage } : {}) });
+      try {
+        const persisted = navigator.storage?.persisted ? await navigator.storage.persisted() : null;
+        const est = navigator.storage?.estimate ? await navigator.storage.estimate() : undefined;
+        setStorageInfo({ persisted, ...(est?.usage !== undefined ? { usage: est.usage } : {}) });
+      } catch {
+        setStorageInfo({ persisted: null });
+      }
     })();
   }, []);
 
@@ -318,43 +374,96 @@ function DataManagement() {
 
   return (
     <>
-      <Card title="Backup and restore">
+      <Card title="Backup, restore and moving devices">
         <p className="small">
-          Your data lives only in this browser on this device. It does not sync between your iPhone
-          and PC, and it can be lost if browser data is cleared. Export a backup regularly and keep
-          it somewhere private.
+          {sync
+            ? 'Your data syncs to your account, but a backup is still your safety net against mistakes (for example deleting something on one device deletes it everywhere). Back up regularly and keep the backup somewhere private.'
+            : 'Your data lives only in this browser on this device. It does not sync between your iPhone and PC, and it can be lost if browser data is cleared. Back up regularly and keep the backup somewhere private.'}
+        </p>
+        <p className="small">
+          <strong>To move your data to another device:</strong> copy the backup text here, send it
+          to yourself privately (for example in a note), then on the other device open Settings →
+          Paste backup text, and choose Replace.
         </p>
         <Alert tone="warning">
-          Backup files are not encrypted. They contain your financial records.
+          Backups are not encrypted. They contain your financial records.
         </Alert>
         <div className="btn-row section">
+          {!IS_ARTIFACT && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() =>
+                void run(async () => {
+                  const b = await exportBackup(store);
+                  downloadJson(b, backupFileName(b.exportedAt));
+                }, 'Backup downloaded')
+              }
+            >
+              Download backup file
+            </button>
+          )}
           <button
             type="button"
-            className="btn btn-primary"
+            className={IS_ARTIFACT ? 'btn btn-primary' : 'btn'}
             onClick={() =>
-              void run(async () => {
-                const b = await exportBackup(store);
-                downloadJson(b, backupFileName(b.exportedAt));
-              }, 'Backup downloaded')
+              void run(async () => setBackupText(JSON.stringify(await exportBackup(store))))
             }
           >
-            Export backup (JSON)
+            Copy backup text…
           </button>
           <label className="btn" htmlFor="restore-file">
-            Choose backup to restore…
+            Restore from file…
           </label>
           <input
             id="restore-file"
             ref={fileRef}
             className="visually-hidden"
             type="file"
-            accept="application/json,.json"
+            accept="application/json,.json,.txt"
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) void onFile(f);
             }}
           />
+          <button type="button" className="btn" onClick={() => setPasteOpen((o) => !o)}>
+            Paste backup text…
+          </button>
         </div>
+        {backupText && <BackupText text={backupText} onClose={() => setBackupText(null)} />}
+        {pasteOpen && (
+          <div className="panel stack" role="region" aria-label="Paste backup">
+            <label className="small" htmlFor="paste-backup">
+              Paste the backup text copied from another device
+            </label>
+            <textarea
+              id="paste-backup"
+              rows={5}
+              value={pasted}
+              onChange={(e) => setPasted(e.target.value)}
+              spellCheck={false}
+            />
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={pasted.trim() === ''}
+                onClick={() =>
+                  void run(async () => {
+                    setPending(parseBackup(pasted.trim()));
+                    setPasteOpen(false);
+                    setPasted('');
+                  })
+                }
+              >
+                Check backup
+              </button>
+              <button type="button" className="btn" onClick={() => setPasteOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         {pending && (
           <div className="panel stack" role="region" aria-label="Confirm restore">
             <p>
@@ -365,7 +474,7 @@ function DataManagement() {
             <p className="small muted">
               <strong>Merge</strong> adds or updates records by ID (restoring twice won't duplicate
               anything). <strong>Replace</strong> deletes everything on this device first — use it
-              after data loss or on a new device.
+              after data loss or when moving to another device.
             </p>
             <div className="btn-row">
               <button
@@ -384,8 +493,14 @@ function DataManagement() {
               <button
                 type="button"
                 className="btn btn-danger"
-                onClick={() => {
-                  if (window.confirm('Replace ALL data on this device with this backup?')) {
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: 'Replace all data on this device?',
+                    message: 'Everything here is deleted and replaced with the backup.',
+                    confirmLabel: 'Replace all data',
+                    danger: true,
+                  });
+                  if (ok) {
                     void run(async () => {
                       await restoreBackup(store, pending, 'replace');
                       setPending(null);
@@ -422,10 +537,7 @@ function DataManagement() {
                 void run(async () => {
                   const ok = await navigator.storage.persist();
                   setStorageInfo((s) => ({ ...s, persisted: ok }));
-                  if (!ok)
-                    throw new Error(
-                      'The browser declined. Installing the app to your home screen may help.',
-                    );
+                  if (!ok) throw new Error('The browser declined. Keep regular backups.');
                 }, 'Persistent storage granted')
               }
             >
@@ -474,16 +586,23 @@ function DataManagement() {
 
       <Card title="Delete all data">
         <p className="small">
-          Permanently removes every account, transaction, goal and setting from this device.
+          Permanently removes every account, transaction, goal and setting from this device
+          {sync ? ' and from your synced account' : ''}.
         </p>
         <button
           type="button"
           className="btn btn-danger"
-          onClick={() => {
-            const answer = window.prompt(
-              'This cannot be undone. Export a backup first if you might need it.\n\nType DELETE to confirm.',
-            );
-            if (answer === 'DELETE') {
+          onClick={async () => {
+            const ok = await confirm({
+              title: 'Delete all data on this device?',
+              message: sync
+                ? 'This also deletes your data from your account, so it disappears from all your devices. It cannot be undone. Copy a backup first if you might need it.'
+                : 'This cannot be undone. Copy a backup first if you might need it.',
+              confirmLabel: 'Delete everything',
+              danger: true,
+              requireText: 'DELETE',
+            });
+            if (ok) {
               void run(async () => {
                 await deleteAllData(store);
                 refreshDemo();
@@ -509,6 +628,7 @@ export function SettingsPage() {
         <h1>Settings</h1>
       </div>
       <div className="grid">
+        <SyncCard />
         <Card title="Budget settings">
           <PlanForm
             key={data.settings.updatedAt}
