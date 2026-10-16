@@ -191,6 +191,42 @@ export function reconcileOccurrences(
   return occurrences.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
+/**
+ * Posted transactions that could be the payment for an unmatched occurrence but weren't matched
+ * automatically because the category and description don't identify it (e.g. an uncategorised
+ * import described only as the church's or employer's name). Same direction, workspace, account
+ * (if set), amount within 10% (min R1) and date window as auto-matching, closest first. Only
+ * suggestions: nothing is linked until the user confirms.
+ */
+export function possiblePayments(
+  rule: RecurringRule,
+  occ: Occurrence,
+  transactions: readonly Transaction[],
+  claimed: ReadonlySet<string>,
+  limit = 2,
+): Transaction[] {
+  if (occ.status !== 'unmatched') return [];
+  return transactions
+    .filter(
+      (t) =>
+        isActual(t) &&
+        !claimed.has(t.id) &&
+        !t.recurringRuleId &&
+        t.workspace === rule.workspace &&
+        (!rule.accountId || t.accountId === rule.accountId) &&
+        directionMatches(rule, t) &&
+        Math.abs(diffDays(occ.date, t.date)) <= rule.matchWindowDays &&
+        Math.abs(Math.abs(t.amountCents) - rule.amountCents) <= amountTolerance(rule.amountCents),
+    )
+    .sort(
+      (a, b) =>
+        Math.abs(diffDays(occ.date, a.date)) - Math.abs(diffDays(occ.date, b.date)) ||
+        Math.abs(Math.abs(a.amountCents) - rule.amountCents) -
+          Math.abs(Math.abs(b.amountCents) - rule.amountCents),
+    )
+    .slice(0, limit);
+}
+
 /** The next due date on or after `from`, if any. */
 export function nextDueDate(rule: RecurringRule, from: IsoDate): IsoDate | null {
   return occurrenceDates(rule, from, addDays(from, 400))[0] ?? null;

@@ -75,4 +75,56 @@ describe('dashboard model', () => {
     expect(m.goals[0]?.behindSchedule).toBe(true);
     expect(m.alerts.map((a) => a.id)).toContain(`goal-behind-${g.id}`);
   });
+
+  it('summarises the pay period: budget overview, unbudgeted spending and last period', () => {
+    const groceries = makeCategory({ id: 'cat-groc', group: 'essential', name: 'Groceries' });
+    const spend = (date: string, amountCents: number, categoryId: string | null) =>
+      makeTxn({ accountId: main.id, amountCents, date, categoryId });
+    const m = buildDashboard({
+      ...base,
+      settings: makeSettings({
+        paydayDayOfMonth: 25,
+        reservePlannedSavings: false,
+        budgetPeriodMode: 'pay_period',
+      }),
+      categories: [essential, fun, groceries],
+      budgets: [
+        makeBudget({ categoryId: fun.id, limitCents: 50_000 }),
+        makeBudget({ categoryId: groceries.id, limitCents: 300_000 }),
+      ],
+      transactions: [
+        spend('2026-03-10', -20_000, fun.id),
+        spend('2026-03-11', -120_000, groceries.id),
+        spend('2026-03-12', -400_000, essential.id), // rent: no budget
+        spend('2026-03-13', -3_000, null),
+        spend('2026-02-20', -60_000, fun.id), // previous period (25 Jan – 24 Feb)
+        spend('2026-02-26', -10_000, fun.id), // this period, before March
+      ],
+    });
+    expect(m.period).toMatchObject({
+      start: '2026-02-25',
+      end: '2026-03-24',
+      mode: 'pay_period',
+      dayNumber: 24,
+      totalDays: 28,
+    });
+    expect(m.period.summary.netExpenseCents).toBe(553_000);
+    expect(m.budgetOverview).toMatchObject({
+      limitCents: 350_000,
+      spentCents: 150_000,
+      remainingCents: 200_000,
+      unbudgetedSpentCents: 400_000,
+      uncategorisedSpentCents: 3_000,
+    });
+    expect(m.budgetOverview.lines.map((l) => [l.categoryName, l.remainingCents])).toEqual([
+      ['Fun', 20_000],
+      ['Groceries', 180_000],
+    ]);
+    expect(m.lastPeriod).toMatchObject({
+      start: '2026-01-25',
+      end: '2026-02-24',
+      budgetLimitCents: 350_000,
+      budgetSpentCents: 60_000,
+    });
+  });
 });

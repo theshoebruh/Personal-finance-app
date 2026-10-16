@@ -12,7 +12,7 @@ import {
   type Workspace,
 } from '@/domain/models';
 import { benchmark503020, budgetableIncome, savingsTarget } from '@/domain/calculations/income';
-import { budgetPeriod } from '@/domain/calculations/period';
+import { budgetPeriod, withReceivedPaydays } from '@/domain/calculations/period';
 import { spendingByCategory, inView } from '@/domain/calculations/reporting';
 import { estimateEssentialMonthly } from '@/domain/calculations/goals';
 import { monthlyEquivalent, nextDueDate } from '@/domain/calculations/recurring';
@@ -158,7 +158,10 @@ function IncomePlanCard({ data }: { data: FinanceData }) {
 function CategoryLimits({ data, workspace }: { data: FinanceData; workspace: Workspace }) {
   const { store, today } = useApp();
   const { run, statusNode } = useStatus();
-  const period = budgetPeriod(today, data.settings);
+  const period = budgetPeriod(
+    today,
+    withReceivedPaydays(today, data.settings, data.recurringRules, data.transactions),
+  );
   const spent = spendingByCategory(data.transactions, workspace, period.start, period.end);
   const budgetsByCat = new Map(
     data.budgets.filter((b) => b.workspace === workspace && b.active).map((b) => [b.categoryId, b]),

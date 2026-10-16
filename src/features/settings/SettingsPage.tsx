@@ -6,7 +6,7 @@ import { IS_ARTIFACT } from '@/app/env';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useApp, useFinanceData, type FinanceData } from '@/app/AppContext';
 import { budgetableIncome, savingsRateWarning, savingsTarget } from '@/domain/calculations/income';
-import { nextPayday } from '@/domain/calculations/period';
+import { budgetPeriod, nextPayday, salaryReceiptDates } from '@/domain/calculations/period';
 import { centsToDecimalString, parseAmountToCents } from '@/domain/money';
 import { updateSettings } from '@/services/settingsService';
 import {
@@ -66,10 +66,18 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
       : null;
   const rateWarn = Number.isFinite(rateNum) ? savingsRateWarning(rateNum) : null;
   const paydayNum = payday === '' ? null : Number(payday);
-  const nextPd =
+  const validPayday =
     paydayNum !== null && Number.isInteger(paydayNum) && paydayNum >= 1 && paydayNum <= 31
-      ? nextPayday(today, { paydayDayOfMonth: paydayNum, nextPaydayOverride: override || null })
+      ? paydayNum
       : null;
+  // Preview with the values being edited, including salary that already arrived early or late.
+  const pay = {
+    paydayDayOfMonth: validPayday,
+    nextPaydayOverride: override || null,
+    receivedPaydays: salaryReceiptDates(today, s, data.recurringRules, data.transactions),
+  };
+  const nextPd = validPayday !== null ? nextPayday(today, pay) : null;
+  const periodPreview = budgetPeriod(today, { ...pay, budgetPeriodMode: mode });
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -220,6 +228,26 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
             </select>
           </Field>
         </div>
+        <p className="small" aria-live="polite">
+          Current budget period: <DateText date={periodPreview.start} /> –{' '}
+          <DateText date={periodPreview.end} />
+          {mode === 'pay_period' && validPayday === null && ' (set a payday to use pay periods)'}
+        </p>
+        {mode === 'calendar_month' && validPayday !== null && (
+          <p className="small muted">
+            Choose <strong>Payday to payday</strong> to budget from one payday to the day before the
+            next, so your limits match when your salary arrives.{' '}
+            <button type="button" className="btn btn-sm" onClick={() => setMode('pay_period')}>
+              Use payday to payday
+            </button>
+          </p>
+        )}
+        <p className="xs faint">
+          A payday of 29–31 falls on the last day of shorter months. If salary arrives up to 10 days
+          early or 5 days late, the new period starts on the day it arrives, provided it is
+          categorised as Salary or matched to your Salary recurring item. Use the override to plan
+          ahead for an early payday. Changing the period never deletes or changes any transactions.
+        </p>
       </fieldset>
 
       <fieldset>

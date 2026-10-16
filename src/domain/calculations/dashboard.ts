@@ -1,6 +1,6 @@
 import { findRepeatedImports } from '../imports/staging';
 import type { Transaction } from '../models';
-import { type IsoDate, addDays, diffDays, endOfMonth, startOfMonth } from '../dates';
+import { type IsoDate, addDays, daysInclusive, diffDays } from '../dates';
 import { type Cents, formatZAR } from '../money';
 import {
   type AvailableToSpendInput,
@@ -8,6 +8,7 @@ import {
   calculateAvailableToSpend,
 } from './availableToSpend';
 import { type BudgetLine, budgetLines } from './budgets';
+import { type BudgetPeriod, previousBudgetPeriod, withReceivedPaydays } from './period';
 import {
   type EssentialEstimate,
   type GoalProgress,
@@ -15,9 +16,16 @@ import {
   estimateEssentialMonthly,
   goalBalance,
   goalProgress,
+  savingsMadeInPeriod,
+  unpairedOutgoingTransfers,
 } from './goals';
-import { type IncomeExpenseSummary, inView, summariseIncomeExpenses } from './reporting';
-import type { Occurrence } from './recurring';
+import {
+  type IncomeExpenseSummary,
+  inView,
+  spendingByCategory,
+  summariseIncomeExpenses,
+} from './reporting';
+import { type Occurrence, possiblePayments, reconcileOccurrences } from './recurring';
 
 export interface DashboardAlert {
   id: string;
@@ -37,9 +45,34 @@ export interface GoalSummary {
   behindSchedule: boolean;
 }
 
+export interface BudgetOverview {
+  lines: BudgetLine[];
+  /** Totals over the budgeted categories only. */
+  limitCents: Cents;
+  spentCents: Cents;
+  /** limit − spent; negative means over budget overall. */
+  remainingCents: Cents;
+  /** Spending in categories that have no active budget. */
+  unbudgetedSpentCents: Cents;
+  uncategorisedSpentCents: Cents;
+}
+
+export interface PeriodSummary extends BudgetPeriod {
+  summary: IncomeExpenseSummary;
+}
+
+export interface LastPeriod extends PeriodSummary {
+  budgetLimitCents: Cents;
+  budgetSpentCents: Cents;
+  savingsMadeCents: Cents;
+}
+
 export interface DashboardModel {
   ats: AvailableToSpendResult;
-  month: { start: IsoDate; end: IsoDate; summary: IncomeExpenseSummary };
+  /** The current budget period (pay period or calendar month, per Settings). */
+  period: PeriodSummary & { dayNumber: number; totalDays: number };
+  budgetOverview: BudgetOverview;
+  lastPeriod: LastPeriod;
   essential: EssentialEstimate;
   emergency: {
     goalId: string | null;
@@ -50,8 +83,13 @@ export interface DashboardModel {
     targetSource: 'fixed_override' | 'goal_fixed' | 'essential_estimate' | 'unknown';
   };
   goals: GoalSummary[];
-  budgets: BudgetLine[];
   upcomingBills: Occurrence[];
+  /** One-sided transfers out of spendable accounts this period (not counted as savings). */
+  unpairedTransfers: Transaction[];
+  /** Expected income that is due but not recorded (or not recognised) yet. */
+  lateIncome: Occurrence[];
+  /** Possible payments for unmatched occurrences, keyed `${ruleId}|${date}`; never auto-linked. */
+  paymentSuggestions: Record<string, Transaction[]>;
   recent: Transaction[];
   uncategorisedCount: number;
   alerts: DashboardAlert[];
@@ -61,9 +99,8 @@ export interface DashboardModel {
 export function buildDashboard(input: AvailableToSpendInput): DashboardModel {
   const { today, view, settings } = input;
   const ats = calculateAvailableToSpend(input);
-  const monthStart = startOfMonth(today);
-  const monthEnd = endOfMonth(today);
-  const summary = summariseIncomeExpenses(input.transactions, view, monthStart, monthEnd);
+  const { period } = ats;
+  const summary = summariseIncomeExpenses(input.transactions, view, period.start, period.end);
 
   // Emergency fund
   const essential = estimateEssentialMonthly(
@@ -119,9 +156,40 @@ export function buildDashboard(input: AvailableToSpendInput): DashboardModel {
     input.categories,
     input.transactions,
     view,
-    ats.period.start,
-    ats.period.end,
+    period.start,
+    period.end,
   );
+  const budgetOverview = overview(input, lines, period.start, period.end);
+
+  // How the previous period ended (derived from the same records; nothing is stored or reset).
+  const pay = withReceivedPaydays(today, settings, input.recurringRules, input.transactions);
+  const prev = previousBudgetPeriod(period, pay);
+  const prevLines = budgetLines(
+    input.budgets,
+    input.categories,
+    input.transactions,
+    view,
+    prev.start,
+    prev.end,
+  );
+  const lastPeriod: LastPeriod = {
+    ...prev,
+    summary: summariseIncomeExpenses(input.transactions, view, prev.start, prev.end),
+    budgetLimitCents: prevLines.reduce((sum, l) => sum + l.limitCents, 0),
+    budgetSpentCents: prevLines.reduce((sum, l) => sum + l.spentCents, 0),
+    savingsMadeCents:
+      view === 'business'
+        ? 0
+        : savingsMadeInPeriod(
+            input.goals,
+            input.goalContributions,
+            input.accounts,
+            input.transactions,
+            'personal',
+            prev.start,
+            prev.end,
+          ),
+  };
 
   // Upcoming bills within each rule's alert lead time
   const leadByRule = new Map(input.recurringRules.map((r) => [r.id, r.alertLeadDays]));
@@ -129,6 +197,26 @@ export function buildDashboard(input: AvailableToSpendInput): DashboardModel {
     const lead = leadByRule.get(o.ruleId) ?? 3;
     return o.date >= today && o.date <= addDays(today, lead);
   });
+
+  // Transactions that could pay an unmatched bill (or be late income) but weren't recognised.
+  const claimed = new Set(
+    reconcileOccurrences(
+      input.recurringRules,
+      input.transactions,
+      addDays(period.start, -40),
+      addDays(ats.window.end, 1),
+    )
+      .map((o) => o.matchedTransactionId)
+      .filter((id): id is string => id !== undefined),
+  );
+  const ruleById = new Map(input.recurringRules.map((r) => [r.id, r]));
+  const lateIncome = ats.expectedIncome.items.filter((o) => o.date <= today);
+  const paymentSuggestions: Record<string, Transaction[]> = {};
+  for (const o of [...ats.commitments.items, ...lateIncome]) {
+    const rule = ruleById.get(o.ruleId);
+    const found = rule ? possiblePayments(rule, o, input.transactions, claimed) : [];
+    if (found.length > 0) paymentSuggestions[`${o.ruleId}|${o.date}`] = found;
+  }
 
   const inViewTxns = input.transactions.filter((t) => !t.archived && inView(t.workspace, view));
   const recent = [...inViewTxns]
@@ -259,7 +347,14 @@ export function buildDashboard(input: AvailableToSpendInput): DashboardModel {
 
   return {
     ats,
-    month: { start: monthStart, end: monthEnd, summary },
+    period: {
+      ...period,
+      summary,
+      dayNumber: daysInclusive(period.start, today),
+      totalDays: daysInclusive(period.start, period.end),
+    },
+    budgetOverview,
+    lastPeriod,
     essential,
     emergency: {
       goalId: efGoal?.id ?? null,
@@ -272,10 +367,42 @@ export function buildDashboard(input: AvailableToSpendInput): DashboardModel {
       targetSource,
     },
     goals,
-    budgets: lines,
     upcomingBills,
+    lateIncome,
+    paymentSuggestions,
+    unpairedTransfers: unpairedOutgoingTransfers(
+      input.accounts,
+      input.transactions,
+      view,
+      period.start,
+      period.end,
+    ),
     recent,
     uncategorisedCount,
     alerts,
+  };
+}
+
+function overview(
+  input: AvailableToSpendInput,
+  lines: BudgetLine[],
+  start: IsoDate,
+  end: IsoDate,
+): BudgetOverview {
+  const spent = spendingByCategory(input.transactions, input.view, start, end);
+  const budgeted = new Set(lines.map((l) => l.categoryId));
+  let unbudgeted = 0;
+  for (const [catId, amount] of spent) {
+    if (catId !== null && !budgeted.has(catId)) unbudgeted += amount;
+  }
+  const limit = lines.reduce((sum, l) => sum + l.limitCents, 0);
+  const used = lines.reduce((sum, l) => sum + l.spentCents, 0);
+  return {
+    lines,
+    limitCents: limit,
+    spentCents: used,
+    remainingCents: limit - used,
+    unbudgetedSpentCents: Math.max(0, unbudgeted),
+    uncategorisedSpentCents: Math.max(0, spent.get(null) ?? 0),
   };
 }

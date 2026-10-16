@@ -425,6 +425,22 @@ a {
 .list > li:last-child {
   border-bottom: 0;
 }
+.budget-progress > li {
+  display: block;
+  padding: var(--space-2) 0;
+}
+.list > li:has(> .suggestions) {
+  flex-wrap: wrap;
+}
+.suggestions {
+  flex-basis: 100%;
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+}
+.budget-progress progress {
+  margin-top: var(--space-1);
+}
 .list .primary {
   min-width: 0;
   flex: 1;

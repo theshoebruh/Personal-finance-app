@@ -32,6 +32,7 @@ import {
 } from '@/components/ui';
 import { AccountOptions, CategoryOptions, lookup } from '../shared';
 import { ConvertToTransferPanel, TransactionForm, TransferForm } from './TransactionForms';
+import { unlinkPayment } from '@/services/planningService';
 
 type Sort = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
 type Panel = { kind: 'new' } | { kind: 'transfer' } | { kind: 'edit'; txn: Transaction } | null;
@@ -142,6 +143,30 @@ export function TransactionsPage() {
             accounts={data!.accounts}
             onDone={done}
           />
+          {txn.recurringRuleId && txn.recurringOccurrenceDate && (
+            <p className="small row-between">
+              <span>
+                Counts as{' '}
+                <strong>
+                  {data!.recurringRules.find((r) => r.id === txn.recurringRuleId)?.name ??
+                    'a recurring item'}
+                </strong>{' '}
+                due <DateText date={txn.recurringOccurrenceDate} />, so it isn't deducted twice.
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() =>
+                  void run(async () => {
+                    await unlinkPayment(store, txn.id);
+                    done('Link removed; the recurring item is matched automatically again.');
+                  })
+                }
+              >
+                Unlink
+              </button>
+            </p>
+          )}
         </>
       );
     }

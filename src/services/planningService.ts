@@ -17,6 +17,7 @@ import {
   startOfMonth,
 } from '@/domain/dates';
 import type { FinanceStore } from '@/data/repositories/types';
+import { occurrenceDates } from '@/domain/calculations/recurring';
 import { type Clock, DomainError, newId, systemClock } from './common';
 
 // ---------------------------------------------------------------- Recurring items
@@ -62,6 +63,68 @@ export async function setOccurrenceSettled(
     settledDates: [...dates].sort(),
     updatedAt: clock.now(),
   });
+}
+
+/**
+ * Record that a transaction is the payment (or receipt) for one occurrence of a recurring item,
+ * e.g. an imported tithe described only as the church name. The occurrence then counts as paid and
+ * is not deducted again. Stored on the transaction's existing recurring-item fields.
+ */
+export async function linkPaymentToOccurrence(
+  store: FinanceStore,
+  transactionId: string,
+  ruleId: string,
+  date: IsoDate,
+  clock: Clock = systemClock,
+): Promise<void> {
+  const [t, rule] = await Promise.all([
+    store.transactions.get(transactionId),
+    store.recurringRules.get(ruleId),
+  ]);
+  if (!t) throw new DomainError('Transaction not found');
+  if (!rule) throw new DomainError('Recurring item not found');
+  const directionOk =
+    rule.direction === 'expense'
+      ? t.type === 'expense' && t.amountCents < 0
+      : t.type === 'income' && t.amountCents > 0;
+  if (!directionOk) {
+    throw new DomainError(
+      rule.direction === 'expense'
+        ? 'Only an expense can pay a recurring bill.'
+        : 'Only income can be recorded as expected income.',
+    );
+  }
+  if (t.workspace !== rule.workspace) {
+    throw new DomainError('The transaction and the recurring item are in different workspaces.');
+  }
+  if (!occurrenceDates(rule, date, date).includes(date)) {
+    throw new DomainError(`${rule.name} isn't due on that date.`);
+  }
+  const taken = (await store.transactions.list()).find(
+    (o) => o.id !== t.id && o.recurringRuleId === ruleId && o.recurringOccurrenceDate === date,
+  );
+  if (taken)
+    throw new DomainError(`Another transaction is already linked to ${rule.name} on that date.`);
+  await store.transactions.put({
+    ...t,
+    recurringRuleId: ruleId,
+    recurringOccurrenceDate: date,
+    updatedAt: clock.now(),
+  });
+}
+
+/** Remove a transaction's link to a recurring item; the occurrence is matched normally again. */
+export async function unlinkPayment(
+  store: FinanceStore,
+  transactionId: string,
+  clock: Clock = systemClock,
+): Promise<void> {
+  const t = await store.transactions.get(transactionId);
+  if (!t) throw new DomainError('Transaction not found');
+  const next = { ...t, updatedAt: clock.now() };
+  delete next.recurringRuleId;
+  delete next.recurringOccurrenceDate;
+  await store.transactions.put(next);
 }
 
 export async function deleteRecurringRule(store: FinanceStore, id: string): Promise<void> {

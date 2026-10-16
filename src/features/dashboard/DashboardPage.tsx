@@ -6,7 +6,8 @@ import { useApp, useFinanceData } from '@/app/AppContext';
 import { buildDashboard } from '@/domain/calculations/dashboard';
 import { WORKSPACE_LABELS } from '@/domain/models';
 import { formatDisplayDate } from '@/domain/dates';
-import { setOccurrenceSettled } from '@/services/planningService';
+import { linkPaymentToOccurrence, setOccurrenceSettled } from '@/services/planningService';
+import type { Occurrence } from '@/domain/calculations/recurring';
 import { loadDemoData } from '@/services/demoService';
 import {
   Alert,
@@ -114,6 +115,37 @@ export function DashboardPage() {
   const alerts = model.alerts.filter((a) => !dismissed.has(a.id));
   const periodWord = ats.window.basis === 'next_payday' ? 'payday' : 'month-end';
   const hasDemo = data.accounts.some((a) => a.isDemo);
+
+  const paymentSuggestions = model.paymentSuggestions;
+  function suggestionsFor(o: Occurrence) {
+    const found = paymentSuggestions[`${o.ruleId}|${o.date}`];
+    if (!found) return null;
+    return (
+      <div className="suggestions">
+        {found.map((t) => (
+          <div key={t.id} className="row-between xs">
+            <span>
+              Could this be it? {t.description} · <DateText date={t.date} /> ·{' '}
+              <Money cents={Math.abs(t.amountCents)} />
+            </span>
+            <button
+              type="button"
+              className="btn btn-sm"
+              aria-label={`Link ${t.description} on ${formatDisplayDate(t.date)} to ${o.ruleName} due ${formatDisplayDate(o.date)}`}
+              onClick={() =>
+                void run(
+                  () => linkPaymentToOccurrence(store, t.id, o.ruleId, o.date),
+                  `${t.description} linked to ${o.ruleName} — not counted twice`,
+                )
+              }
+            >
+              Link
+            </button>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -422,9 +454,33 @@ export function DashboardPage() {
                       Mark paid
                     </button>
                   </div>
+                  {suggestionsFor(o)}
                 </li>
               ))}
             </ul>
+          )}
+          {model.lateIncome.some((o) => model.paymentSuggestions[`${o.ruleId}|${o.date}`]) && (
+            <>
+              <h3 className="small">Expected income not recognised yet</h3>
+              <ul className="list">
+                {model.lateIncome
+                  .filter((o) => model.paymentSuggestions[`${o.ruleId}|${o.date}`])
+                  .map((o) => (
+                    <li key={`${o.ruleId}-${o.date}`}>
+                      <div className="primary">
+                        <div className="title">{o.ruleName}</div>
+                        <div className="meta">
+                          <DateText date={o.date} />
+                        </div>
+                      </div>
+                      <div className="end">
+                        <Money cents={o.expectedCents} />
+                      </div>
+                      {suggestionsFor(o)}
+                    </li>
+                  ))}
+              </ul>
+            </>
           )}
           <p className="xs faint">
             Bills are deducted until a matching posted payment is recorded (same amount ±10%, within
@@ -432,31 +488,185 @@ export function DashboardPage() {
           </p>
         </Card>
 
-        <Card title="This month" action={<Badge kind="actual">Actual</Badge>}>
+        <Card
+          title="Budget this period"
+          action={
+            <Link className="btn btn-sm" to="/budgets">
+              Edit limits
+            </Link>
+          }
+        >
+          <p className="small">
+            <DateText date={model.period.start} /> – <DateText date={model.period.end} /> · day{' '}
+            {model.period.dayNumber} of {model.period.totalDays}
+            {model.period.mode === 'calendar_month' && data.settings.paydayDayOfMonth !== null && (
+              <span className="faint"> (calendar month — switch to pay periods in Settings)</span>
+            )}
+          </p>
+          {model.budgetOverview.lines.length === 0 ? (
+            <p className="small muted">
+              No category limits yet. <Link to="/budgets">Set monthly limits</Link> to track
+              spending by category.
+            </p>
+          ) : (
+            <>
+              <table className="breakdown">
+                <tbody>
+                  <tr>
+                    <th scope="row">Budgeted</th>
+                    <td>
+                      <Money cents={model.budgetOverview.limitCents} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Spent so far</th>
+                    <td>
+                      <Money cents={model.budgetOverview.spentCents} />
+                    </td>
+                  </tr>
+                  <tr className="total">
+                    <th scope="row">
+                      {model.budgetOverview.remainingCents < 0 ? 'Over budget' : 'Remaining'}
+                    </th>
+                    <td>
+                      <Money cents={Math.abs(model.budgetOverview.remainingCents)} />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <ul className="list budget-progress">
+                {model.budgetOverview.lines.map((l) => (
+                  <li key={l.budgetId}>
+                    <div className="row-between small">
+                      <span>{l.categoryName}</span>
+                      <span>
+                        {l.remainingCents < 0 ? (
+                          <Badge kind="warning">
+                            Over by <Money cents={-l.remainingCents} />
+                          </Badge>
+                        ) : (
+                          <>
+                            <Money cents={l.remainingCents} /> left of{' '}
+                            <Money cents={l.limitCents} />
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    {l.limitCents > 0 && (
+                      <ProgressBar
+                        value={l.spentCents}
+                        max={l.limitCents}
+                        label={`${l.categoryName} budget used`}
+                      />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {(model.budgetOverview.unbudgetedSpentCents > 0 ||
+            model.budgetOverview.uncategorisedSpentCents > 0) && (
+            <p className="xs faint">
+              Also spent: <Money cents={model.budgetOverview.unbudgetedSpentCents} /> in categories
+              without a limit
+              {model.budgetOverview.uncategorisedSpentCents > 0 && (
+                <>
+                  {' '}
+                  and <Money cents={model.budgetOverview.uncategorisedSpentCents} />{' '}
+                  <Link to="/transactions?status=needs_review">uncategorised</Link>
+                </>
+              )}
+              .
+            </p>
+          )}
+          <p className="xs faint">
+            Daily allowance: <Money cents={ats.dailyAllowanceCents} /> until{' '}
+            <DateText date={ats.window.end} />. Limits start fresh each period; unspent or overspent
+            money stays in your account balance and is reflected in what's available next period.
+          </p>
+          <details className="explainer">
+            <summary>
+              Last period (<DateText date={model.lastPeriod.start} /> –{' '}
+              <DateText date={model.lastPeriod.end} />)
+            </summary>
+            <table className="breakdown">
+              <tbody>
+                <tr>
+                  <th scope="row">Income</th>
+                  <td>
+                    <Money cents={model.lastPeriod.summary.incomeCents} />
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Spending</th>
+                  <td>
+                    <Money cents={-model.lastPeriod.summary.netExpenseCents} />
+                  </td>
+                </tr>
+                {model.lastPeriod.budgetLimitCents > 0 && (
+                  <tr>
+                    <th scope="row">
+                      Budgeted categories
+                      <span className="explain">
+                        <Money cents={model.lastPeriod.budgetSpentCents} /> spent of{' '}
+                        <Money cents={model.lastPeriod.budgetLimitCents} /> (today's limits)
+                      </span>
+                    </th>
+                    <td>
+                      <Money
+                        cents={
+                          model.lastPeriod.budgetLimitCents - model.lastPeriod.budgetSpentCents
+                        }
+                        signed
+                        tone
+                      />
+                    </td>
+                  </tr>
+                )}
+                {view !== 'business' && (
+                  <tr>
+                    <th scope="row">Saved</th>
+                    <td>
+                      <Money cents={model.lastPeriod.savingsMadeCents} />
+                    </td>
+                  </tr>
+                )}
+                <tr className="total">
+                  <th scope="row">Net</th>
+                  <td>
+                    <Money cents={model.lastPeriod.summary.netCents} signed tone />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </details>
+        </Card>
+
+        <Card title="This period" action={<Badge kind="actual">Actual</Badge>}>
           <table className="breakdown">
             <tbody>
               <tr>
                 <th scope="row">Income</th>
                 <td>
-                  <Money cents={model.month.summary.incomeCents} />
+                  <Money cents={model.period.summary.incomeCents} />
                 </td>
               </tr>
               <tr>
                 <th scope="row">
                   Spending
-                  {model.month.summary.refundCents > 0 && (
+                  {model.period.summary.refundCents > 0 && (
                     <span className="explain">
-                      After <Money cents={model.month.summary.refundCents} /> of refunds
+                      After <Money cents={model.period.summary.refundCents} /> of refunds
                     </span>
                   )}
                 </th>
                 <td>
-                  <Money cents={-model.month.summary.netExpenseCents} />
+                  <Money cents={-model.period.summary.netExpenseCents} />
                 </td>
               </tr>
               {view !== 'combined' &&
-                (model.month.summary.ownerContributionCents > 0 ||
-                  model.month.summary.ownerDrawCents > 0) && (
+                (model.period.summary.ownerContributionCents > 0 ||
+                  model.period.summary.ownerDrawCents > 0) && (
                   <tr>
                     <th scope="row">
                       Owner contributions / draws
@@ -465,23 +675,23 @@ export function DashboardPage() {
                       </span>
                     </th>
                     <td>
-                      <Money cents={model.month.summary.ownerContributionCents} /> /{' '}
-                      <Money cents={model.month.summary.ownerDrawCents} />
+                      <Money cents={model.period.summary.ownerContributionCents} /> /{' '}
+                      <Money cents={model.period.summary.ownerDrawCents} />
                     </td>
                   </tr>
                 )}
               <tr className="total">
                 <th scope="row">Net</th>
                 <td>
-                  <Money cents={model.month.summary.netCents} signed tone />
+                  <Money cents={model.period.summary.netCents} signed tone />
                 </td>
               </tr>
             </tbody>
           </table>
-          {model.month.summary.transferLegsExcluded > 0 && (
+          {model.period.summary.transferLegsExcluded > 0 && (
             <p className="xs faint">
-              {model.month.summary.transferLegsExcluded} transfer entr
-              {model.month.summary.transferLegsExcluded === 1 ? 'y' : 'ies'} between your own
+              {model.period.summary.transferLegsExcluded} transfer entr
+              {model.period.summary.transferLegsExcluded === 1 ? 'y' : 'ies'} between your own
               accounts excluded.
             </p>
           )}
@@ -508,6 +718,18 @@ export function DashboardPage() {
                   <Money cents={ats.plannedSavings.budgetableIncomeCents} /> (salary after tithe).
                   Counts goal allocations and transfers into non-spendable accounts.
                 </p>
+                {model.unpairedTransfers.length > 0 && (
+                  <p className="xs">
+                    <Badge kind="warning">Not counted</Badge>{' '}
+                    <Money
+                      cents={-model.unpairedTransfers.reduce((sum, t) => sum + t.amountCents, 0)}
+                    />{' '}
+                    in {model.unpairedTransfers.length} transfer
+                    {model.unpairedTransfers.length === 1 ? '' : 's'} out of a spendable account
+                    with no receiving side recorded. If it went to savings, import that account's
+                    statement or record the other side, and it will count.
+                  </p>
+                )}
               </div>
               <div>
                 <div className="row-between small">

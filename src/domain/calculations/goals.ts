@@ -184,6 +184,38 @@ export function savingsMadeInPeriod(
   return total;
 }
 
+/**
+ * Transfers out of a spendable account in the period whose other side isn't recorded yet (e.g. a
+ * statement row imported as a transfer without "also record the other side"). Their destination
+ * is unknown, so `savingsMadeInPeriod` can't count them; the dashboard points them out instead.
+ */
+export function unpairedOutgoingTransfers(
+  accounts: readonly Account[],
+  transactions: readonly Transaction[],
+  view: WorkspaceView,
+  start: IsoDate,
+  end: IsoDate,
+): Transaction[] {
+  const legCount = new Map<string, number>();
+  for (const t of transactions) {
+    if (t.type === 'transfer' && t.transferId && !t.archived) {
+      legCount.set(t.transferId, (legCount.get(t.transferId) ?? 0) + 1);
+    }
+  }
+  const spendable = new Set(accounts.filter((a) => a.includeInSpendable).map((a) => a.id));
+  return transactions.filter(
+    (t) =>
+      t.type === 'transfer' &&
+      t.transferId !== undefined &&
+      isActual(t) &&
+      t.amountCents < 0 &&
+      legCount.get(t.transferId) === 1 &&
+      spendable.has(t.accountId) &&
+      inView(t.workspace, view) &&
+      isWithin(t.date, start, end),
+  );
+}
+
 export interface GoalProgress {
   balanceCents: Cents;
   targetCents: Cents | null;

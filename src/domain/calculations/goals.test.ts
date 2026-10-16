@@ -14,6 +14,7 @@ import {
   goalProgress,
   goalReserves,
   savingsMadeInPeriod,
+  unpairedOutgoingTransfers,
 } from './goals';
 
 describe('emergency fund', () => {
@@ -146,5 +147,24 @@ describe('goal allocations', () => {
     expect(p.projectedCompletion).toBe('2026-11-15');
     expect(goalProgress(g, 1_200_000, 1_000_000, '2026-03-15').percent).toBe(100);
     expect(goalProgress(g, 0, null, '2026-03-15').percent).toBeNull();
+  });
+});
+
+describe('one-sided transfers', () => {
+  it('flags transfers out of a spendable account whose receiving side is missing', () => {
+    const spend = makeAccount({ id: 'spend' });
+    const sav = makeAccount({ id: 'sav2', type: 'savings', includeInSpendable: false });
+    const [loneOut] = makeTransfer(spend, sav, 50_000, '2026-03-05');
+    const [, loneIn] = makeTransfer(spend, sav, 20_000, '2026-03-06');
+    const paired = makeTransfer(spend, sav, 30_000, '2026-03-07');
+    const [outsidePeriod] = makeTransfer(spend, sav, 10_000, '2026-02-05');
+    const found = unpairedOutgoingTransfers(
+      [spend, sav],
+      [loneOut!, loneIn!, ...paired, outsidePeriod!],
+      'personal',
+      '2026-03-01',
+      '2026-03-31',
+    );
+    expect(found.map((t) => t.id)).toEqual([loneOut!.id]);
   });
 });

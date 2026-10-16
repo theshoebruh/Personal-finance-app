@@ -134,6 +134,25 @@ Safeguards against double counting:
   period reduce the remaining planned savings.
 - Expected income, pending transactions and unpaid invoices are never counted as cash.
 
+### Budget periods and payday
+
+Settings → _Payday and budget period_ sets a payday (day of month) and whether budgets run per
+calendar month or **from payday to the day before the next payday**. A payday of 29–31 falls on the
+last day of shorter months. If salary arrives up to 10 days early or 5 days late, the new period starts on the
+day it arrives, provided it is categorised as Salary or matched or linked to the Salary recurring
+item. A one-off override plans for a known early payday.
+
+- **Nothing is reset or deleted when a period ends.** Budgets are standing monthly limits per
+  category; each period compares them with that period's spending. Transactions, balances, goals
+  and reports are unchanged, and earlier periods can still be reported on.
+- **Unspent and overspent money** isn't carried between category limits (each period starts at the
+  full limit). It stays in your account balance, so available-to-spend next period is higher or
+  lower by that amount. The dashboard shows how last period ended.
+- **Savings**: the target applies per period; goal balances keep growing across periods.
+- **Daily allowance** = available ÷ days left until the day before the next payday (today counts).
+- A bill or salary that isn't recognised automatically (e.g. an import that only names the church)
+  shows possible payments on the dashboard; **Link** stops it being counted twice.
+
 ### Importing statements
 
 **Import statement** (`/import`) reads a CSV file on the device; the file itself is never uploaded
