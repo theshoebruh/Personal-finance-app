@@ -179,3 +179,27 @@ describe('guided stepper', () => {
     expect(screen.getByText('Step 1 of 5')).toBeInTheDocument();
   });
 });
+
+it('explains where fees come from and marks fees split off a purchase', async () => {
+  const user = userEvent.setup({ delay: null });
+  const csv = `Posting Date,Description,Money In,Money Out,Fee,Balance
+2026-03-02,SMS Notification Fee,,,-0.70,-0.70
+2026-03-03,Card purchase,,-100.00,-2.00,-102.70
+`;
+  render(<App db={db} store={store} initialPath="/import" />);
+  await chooseAccountAndFile(user, new File([csv], 'fees.csv', { type: 'text/csv' }));
+  expect(
+    await screen.findByText(/imported as their own transactions \(2 fees in this file\)/),
+  ).toHaveTextContent('Bank fees come from the “Fee” column');
+  expect(screen.getByText(/1 of 1 consecutive rows add up exactly/)).toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: 'Looks right' }));
+  const review = await screen.findByRole('region', { name: /review and import/i });
+  const list = within(review).getByRole('list', { name: 'Rows to import' });
+  const feeRow = within(list).getByText('Fee: Card purchase').closest('li')!;
+  expect(within(feeRow).getByText('Bank fee')).toBeInTheDocument();
+  await user.click(within(review).getByRole('button', { name: 'Import 3 transactions' }));
+  expect(
+    await screen.findByRole('heading', { name: 'Imported 3 transactions' }),
+  ).toBeInTheDocument();
+});

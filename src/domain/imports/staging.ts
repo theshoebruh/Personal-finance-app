@@ -199,8 +199,8 @@ export function checkRunningBalance(rows: readonly NormalisedRow[]): BalanceChec
     for (let i = 0; i + 1 < usable.length; i++) {
       const a = usable[i]!;
       const b = usable[i + 1]!;
-      if (b.balanceCents! - a.balanceCents! === sign * b.amountCents!) asc++;
-      if (a.balanceCents! - b.balanceCents! === sign * a.amountCents!) desc++;
+      if (b.balanceCents! - a.balanceCents! === sign * b.amountCents! + (b.feeCents ?? 0)) asc++;
+      if (a.balanceCents! - b.balanceCents! === sign * a.amountCents! + (a.feeCents ?? 0)) desc++;
     }
     return { asc, desc };
   };

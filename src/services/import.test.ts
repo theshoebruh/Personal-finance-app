@@ -285,3 +285,58 @@ describe('demo accounts', () => {
     );
   });
 });
+
+describe('bank fees', () => {
+  // Made-up rows in Capitec's layout: fees mostly on their own line, one line with both.
+  const CAPITEC = `Nr,Account,Posting Date,Transaction Date,Description,Original Description,Parent Category,Category,Money In,Money Out,Fee,Balance
+1,0000000000,2026-03-02,2026-03-01 13:40,Coffee shop,COFFEE SHOP,Food,Groceries,,-50.00,,950.00
+2,0000000000,2026-03-02,2026-03-02 23:20,SMS Notification Fee,SMS NOTIFICATION FEE,Fees,Fees,,,-0.70,949.30
+3,0000000000,2026-03-03,2026-03-02 10:00,Card purchase,SHOP 123,Shopping,Clothing,,-100.00,-2.00,847.30
+`;
+
+  it('imports every fee, so the account balance matches the statement', async () => {
+    const p = await prepareImport(store, { accountId, text: CAPITEC, fileName: 'sept.csv' });
+    expect(p.staging.rows.filter((r) => r.include)).toHaveLength(4);
+    const res = await commitImport(store, { prepared: p, rows: p.staging.rows, saveMapping: true });
+    expect(res.created).toBe(4);
+    const txns = await store.transactions.byAccount(accountId);
+    expect(txns.map((t) => [t.description, t.amountCents]).sort()).toEqual([
+      ['Card purchase', -10_000],
+      ['Coffee shop', -5_000],
+      ['Fee: Card purchase', -200],
+      ['SMS Notification Fee', -70],
+    ]);
+    const account = (await store.accounts.get(accountId))!;
+    // Opening balance R1 000 minus everything on the statement = the bank's closing R847,30.
+    expect(accountBalance(account, txns, '2026-03-31')).toBe(84_730);
+    expect(p.staging.balanceCheck?.closing?.balanceCents).toBe(84_730);
+  });
+
+  it('treats fees as already imported when the same statement comes in again', async () => {
+    const first = await prepareImport(store, { accountId, text: CAPITEC });
+    await commitImport(store, { prepared: first, rows: first.staging.rows, saveMapping: true });
+    const again = await prepareImport(store, { accountId, text: CAPITEC });
+    expect(again.mappingSource).toBe('saved');
+    expect(again.staging.rows.map((r) => r.status)).toEqual([
+      'duplicate',
+      'duplicate',
+      'duplicate',
+      'duplicate',
+    ]);
+  });
+
+  it('picks up the fee column for column settings saved before fees were supported', async () => {
+    const first = await prepareImport(store, { accountId, text: CAPITEC });
+    await commitImport(store, { prepared: first, rows: first.staging.rows, saveMapping: true });
+    // Simulate an older saved mapping that has no feeColumn at all.
+    const profile = (await store.importProfiles.get(accountId))!;
+    const { feeColumn: _drop, ...oldMapping } = profile.mapping;
+    await store.importProfiles.put({ ...profile, mapping: oldMapping });
+
+    const later = CAPITEC.replace(/2026-03-0(\d)/g, '2026-04-0$1');
+    const p = await prepareImport(store, { accountId, text: later });
+    expect(p.mappingSource).toBe('saved');
+    expect(p.staging.mapping.feeColumn).toBe(10);
+    expect(p.staging.rows.filter((r) => r.status === 'new')).toHaveLength(4);
+  });
+});

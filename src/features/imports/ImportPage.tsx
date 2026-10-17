@@ -462,6 +462,16 @@ function MappingEditor({
         </div>
         <div className="form-row">
           <ColumnSelect
+            id="map-fee"
+            label="Bank fees (optional)"
+            value={m.feeColumn ?? null}
+            optional
+            prepared={prepared}
+            onChange={(v) => set({ feeColumn: v })}
+          />
+        </div>
+        <div className="form-row">
+          <ColumnSelect
             id="map-ref"
             label="Bank reference / ID (optional)"
             value={m.referenceColumn}
@@ -511,6 +521,15 @@ function ColumnsStep({
   const sample = rows.find((r) => r.status !== 'invalid') ?? rows[0];
   const summary = summariseStaging(rows, prepared.account);
   const bc = prepared.staging.balanceCheck;
+  const feeColumn = prepared.staging.mapping.feeColumn ?? null;
+  const feeCount =
+    feeColumn === null
+      ? 0
+      : rows.filter(
+          (r) =>
+            // Count each statement line once (a split line has two rows with the same raw cells).
+            !r.splitFee && !/^-?0*([.,]0*)?$/.test((r.raw[feeColumn] ?? '').trim()),
+        ).length;
   return (
     <section className="step" aria-labelledby="step-columns">
       <div id="step-columns">
@@ -585,6 +604,20 @@ function ColumnsStep({
             Money out should show with a −, money in with a +. If the date, description or amount is
             wrong, change the columns.
           </p>
+          {prepared.staging.mapping.feeColumn != null && (
+            <p className="small muted">
+              Bank fees come from the{' '}
+              <strong>“{columnLabel(prepared, prepared.staging.mapping.feeColumn)}”</strong> column
+              and are imported as their own transactions
+              {feeCount > 0 && (
+                <>
+                  {' '}
+                  ({feeCount} fee{feeCount === 1 ? '' : 's'} in this file)
+                </>
+              )}
+              .
+            </p>
+          )}
         </Card>
       )}
 
@@ -829,6 +862,7 @@ function ReviewStep({
                 <div className="meta">
                   {r.date && <DateText date={r.date} />}
                   {statusBadge(r)}
+                  {r.splitFee && <Badge>Bank fee</Badge>}
                   {r.transferSuggestion?.strength === 'wording' && !r.transferAccountId && (
                     <Badge kind="warning">Possible transfer</Badge>
                   )}
@@ -871,6 +905,7 @@ function ReviewStep({
                 {r.status !== 'invalid' &&
                   r.include &&
                   otherAccounts.length > 0 &&
+                  !r.splitFee &&
                   !r.transferSuggestion &&
                   !r.transferAccountId &&
                   !transferOpen.has(r.index) && (

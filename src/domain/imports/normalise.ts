@@ -30,6 +30,11 @@ export const columnMappingSchema = z
     amountColumn: z.number().int().min(0).nullable(),
     debitColumn: z.number().int().min(0).nullable(),
     creditColumn: z.number().int().min(0).nullable(),
+    /**
+     * Optional bank-fee column (e.g. Capitec's "Fee"). Fees are always money out. Missing in
+     * mappings saved before fees were supported, which means "not used".
+     */
+    feeColumn: z.number().int().min(0).nullable().optional(),
     /** Bank transaction ID / reference, used to tell identical same-day transactions apart. */
     referenceColumn: z.number().int().min(0).nullable(),
     balanceColumn: z.number().int().min(0).nullable(),
@@ -142,6 +147,13 @@ export interface NormalisedRow {
   amountCents: Cents | null;
   reference: string | null;
   balanceCents: Cents | null;
+  /**
+   * Bank fee charged on the same line as another amount (negative), or null. A line with only a
+   * fee has the fee as its `amountCents` instead.
+   */
+  feeCents?: Cents | null;
+  /** True for the separate fee transaction split off a line that had both an amount and a fee. */
+  splitFee?: boolean;
   errors: string[];
 }
 
@@ -184,10 +196,20 @@ export function normaliseRows(
       .join(' · ');
     if (!description) errors.push('Missing description');
 
+    // Fees are always money out, whatever sign the bank uses; a zero fee means no fee.
+    const feeColumn = mapping.feeColumn ?? null;
+    const feeCell = feeColumn !== null ? amountCell(raw[feeColumn]) : { cents: null, blank: true };
+    let fee: Cents | null = null;
+    if (!feeCell.blank && feeCell.cents === null)
+      errors.push(`Unreadable fee "${raw[feeColumn!]}"`);
+    else if (feeCell.cents) fee = -Math.abs(feeCell.cents);
+
     let amount: Cents | null = null;
+    /** True when the line has no amount of its own (only a fee is allowed then). */
+    let amountBlank = false;
     if (mapping.amountMode === 'signed' && mapping.amountColumn !== null) {
       const a = amountCell(raw[mapping.amountColumn]);
-      if (a.blank) errors.push('Missing amount');
+      if (a.blank) amountBlank = true;
       else if (a.cents === null) errors.push(`Unreadable amount "${raw[mapping.amountColumn]}"`);
       else amount = a.cents;
     } else {
@@ -202,7 +224,7 @@ export function normaliseRows(
       if ((!debit.blank && debit.cents === null) || (!credit.blank && credit.cents === null)) {
         errors.push('Unreadable debit/credit amount');
       } else if (debit.blank && credit.blank) {
-        errors.push('Missing amount');
+        amountBlank = true;
       } else if (!debit.blank && !credit.blank && debit.cents !== 0 && credit.cents !== 0) {
         errors.push('Both debit and credit have a value');
       } else {
@@ -212,9 +234,17 @@ export function normaliseRows(
       }
     }
     if (amount !== null && mapping.invertSign) amount = -amount;
-    if (amount === 0) {
+    let feeCents: Cents | null = null;
+    if ((amountBlank || amount === 0) && fee !== null) {
+      // A line that is only a bank fee (e.g. an SMS notification fee) imports as that fee.
+      amount = fee;
+    } else if (amountBlank) {
+      errors.push('Missing amount');
+    } else if (amount === 0) {
       errors.push('Amount is zero');
       amount = null;
+    } else {
+      feeCents = fee;
     }
 
     const reference =
@@ -232,6 +262,7 @@ export function normaliseRows(
       amountCents: amount,
       reference,
       balanceCents: balance,
+      feeCents,
       errors,
     };
   });
@@ -244,6 +275,7 @@ const HEADER_HINTS: Record<string, RegExp> = {
   amount: /^(amount|value|amount \(zar\)|amount zar|transaction amount)$/i,
   debit: /debit|money out|withdraw|paid out/i,
   credit: /credit|money in|deposit|paid in/i,
+  fee: /^(bank )?(fees?|charges?|service (fees?|charges?))$/i,
   reference: /^(ref|reference|transaction id|id|cheque|statement ref)/i,
   balance: /balance/i,
 };
@@ -271,6 +303,7 @@ export function guessMapping(rows: readonly string[][]): ColumnMapping {
       amountColumn: Math.min(2, header.length - 1),
       debitColumn: null,
       creditColumn: null,
+      feeColumn: null,
       referenceColumn: null,
       balanceColumn: header.length > 3 ? 3 : null,
       dateFormat: 'auto',
@@ -283,9 +316,13 @@ export function guessMapping(rows: readonly string[][]): ColumnMapping {
   const amount = find('amount', used);
   const debit = find('debit', used);
   const credit = find('credit', used);
-  const description = find('description', [
+  const fee = find('fee', [
     ...used,
     ...[amount, debit, credit].filter((x): x is number => x !== null),
+  ]);
+  const description = find('description', [
+    ...used,
+    ...[amount, debit, credit, fee].filter((x): x is number => x !== null),
   ]);
   const reference = find('reference', [date, description ?? -1]);
   const signed = amount !== null || (debit === null && credit === null);
@@ -298,9 +335,32 @@ export function guessMapping(rows: readonly string[][]): ColumnMapping {
     amountColumn: signed ? (amount ?? Math.min(2, header.length - 1)) : null,
     debitColumn: signed ? null : debit,
     creditColumn: signed ? null : credit,
+    feeColumn: fee,
     referenceColumn: reference,
     balanceColumn: balance,
     dateFormat: 'auto',
     invertSign: false,
   };
+}
+
+/**
+ * Splits each line that has both an amount and a fee into two rows: the amount, then a separate
+ * "Fee: …" row for the fee, so fees can be categorised and counted on their own. Lines without a
+ * fee are returned unchanged. Run this after the running-balance check, which needs whole lines.
+ */
+export function splitFees(rows: readonly NormalisedRow[]): NormalisedRow[] {
+  return rows.flatMap((r) => {
+    if (r.feeCents == null || r.errors.length > 0) return [r];
+    return [
+      { ...r, feeCents: null, balanceCents: null },
+      {
+        ...r,
+        description: `Fee: ${r.description}`,
+        amountCents: r.feeCents,
+        feeCents: null,
+        reference: r.reference ? `${r.reference} (fee)` : null,
+        splitFee: true,
+      },
+    ];
+  });
 }

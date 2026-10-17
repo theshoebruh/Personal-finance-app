@@ -1,7 +1,7 @@
 import { isStrongTransfer, suggestTransfers } from './transfers';
 import type { Account, Transaction } from '../models';
 import { normaliseText } from '../calculations/recurring';
-import { type ColumnMapping, type DateFormat, normaliseRows } from './normalise';
+import { type ColumnMapping, type DateFormat, normaliseRows, splitFees } from './normalise';
 import { type BalanceCheck, type StagedRow, checkRunningBalance, stageRows } from './staging';
 
 export interface Staging {
@@ -30,6 +30,7 @@ function mappedColumns(m: ColumnMapping): number[] {
     m.amountMode === 'signed' ? m.amountColumn : null,
     m.amountMode === 'debit_credit' ? m.debitColumn : null,
     m.amountMode === 'debit_credit' ? m.creditColumn : null,
+    m.feeColumn ?? null,
     m.referenceColumn,
     m.balanceColumn,
   ].filter((c): c is number => c !== null);
@@ -73,7 +74,8 @@ export function buildStaging(
     };
   }
   const n = normaliseRows(rows, mapping);
-  const staged = stageRows(n.rows, account.id, existing);
+  // The balance check needs whole statement lines (amount + fee); staging needs the split rows.
+  const staged = stageRows(splitFees(n.rows), account.id, existing);
   if (context) {
     const suggestions = suggestTransfers(
       staged.map((r) =>

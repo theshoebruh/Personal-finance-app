@@ -82,6 +82,11 @@ export async function prepareImport(
   ) {
     mapping = profile.mapping;
     source = 'saved';
+    // Mappings saved before fee columns were supported don't mention one; pick it up from the
+    // header so fees aren't silently left out. An explicit "not used" (null) is respected.
+    if (mapping.feeColumn === undefined && mapping.hasHeader) {
+      mapping = { ...mapping, feeColumn: guessMapping(parsed.rows).feeColumn ?? null };
+    }
   } else {
     headerChanged = !!profile;
     mapping = guessMapping(parsed.rows);
