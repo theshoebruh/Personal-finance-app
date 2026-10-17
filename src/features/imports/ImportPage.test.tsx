@@ -198,6 +198,11 @@ it('explains where fees come from and marks fees split off a purchase', async ()
   const list = within(review).getByRole('list', { name: 'Rows to import' });
   const feeRow = within(list).getByText('Fee: Card purchase').closest('li')!;
   expect(within(feeRow).getByText('Bank fee')).toBeInTheDocument();
+  // Fees are categorised automatically, and the source is explained.
+  expect(within(feeRow).getByRole('combobox', { name: /Category for line 3/ })).toHaveDisplayValue(
+    'Bank fees',
+  );
+  expect(within(feeRow).getByText('Charged on this purchase')).toBeInTheDocument();
   await user.click(within(review).getByRole('button', { name: 'Import 3 transactions' }));
   expect(
     await screen.findByRole('heading', { name: 'Imported 3 transactions' }),

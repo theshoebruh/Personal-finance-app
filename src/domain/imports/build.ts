@@ -1,5 +1,6 @@
 import { isStrongTransfer, suggestTransfers } from './transfers';
-import type { Account, Transaction } from '../models';
+import type { Account, CategorisationRule, Category, Transaction } from '../models';
+import { learnedCategories, suggestCategory } from './categorise';
 import { normaliseText } from '../calculations/recurring';
 import { type ColumnMapping, type DateFormat, normaliseRows, splitFees } from './normalise';
 import { type BalanceCheck, type StagedRow, checkRunningBalance, stageRows } from './staging';
@@ -31,6 +32,8 @@ function mappedColumns(m: ColumnMapping): number[] {
     m.amountMode === 'debit_credit' ? m.debitColumn : null,
     m.amountMode === 'debit_credit' ? m.creditColumn : null,
     m.feeColumn ?? null,
+    m.categoryColumn ?? null,
+    m.parentCategoryColumn ?? null,
     m.referenceColumn,
     m.balanceColumn,
   ].filter((c): c is number => c !== null);
@@ -42,8 +45,16 @@ export function buildStaging(
   mapping: ColumnMapping,
   account: Account,
   existing: readonly Transaction[],
-  /** All your accounts and transactions, for transfer suggestions (optional). */
-  context?: { accounts: readonly Account[]; transactions: readonly Transaction[] },
+  /**
+   * All your accounts and transactions, for transfer suggestions, plus your categories and rules
+   * for category suggestions (optional).
+   */
+  context?: {
+    accounts: readonly Account[];
+    transactions: readonly Transaction[];
+    categories?: readonly Category[];
+    rules?: readonly CategorisationRule[];
+  },
 ): Staging {
   const columnCount = Math.max(0, ...rows.map((r) => r.length));
   const mappingErrors: string[] = [];
@@ -92,6 +103,20 @@ export function buildStaging(
       r.transferSuggestion = s;
       r.transferAccountId = isStrongTransfer(s) ? s!.otherAccountId : null;
     });
+    if (context.categories) {
+      const ctx = {
+        account,
+        categories: context.categories,
+        rules: context.rules ?? [],
+        learned: learnedCategories(context.transactions),
+      };
+      for (const r of staged) {
+        if (r.status === 'invalid') continue;
+        const s = suggestCategory({ ...r, amountCents: r.amountCents! }, ctx);
+        r.categoryId = s?.categoryId ?? null;
+        r.categorySource = s?.source ?? null;
+      }
+    }
   }
   return {
     mapping,

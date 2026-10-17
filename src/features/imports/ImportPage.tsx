@@ -13,7 +13,12 @@ import {
   summariseStaging,
 } from '@/domain/imports';
 import { formatDisplayDate } from '@/domain/dates';
-import { ACCOUNT_TYPE_LABELS, WORKSPACE_LABELS, type Account } from '@/domain/models';
+import {
+  ACCOUNT_TYPE_LABELS,
+  WORKSPACE_LABELS,
+  type Account,
+  type Category,
+} from '@/domain/models';
 import type { ImportBatch } from '@/domain/models';
 import {
   type CommitResult,
@@ -40,6 +45,15 @@ import {
 import { PageHeader } from '@/components/PageHeader';
 import { Icon } from '@/components/icons';
 import { Ring } from '@/components/charts';
+import { CategoryOptions } from '../shared';
+import type { CategorySource } from '@/domain/imports';
+
+const CATEGORY_SOURCE_TEXT: Record<Exclude<CategorySource, 'you'>, string> = {
+  rule: 'Your rule',
+  learned: 'Like last time',
+  fee: 'Charged on this purchase',
+  bank: 'From your bank',
+};
 
 type RowFilter = 'all' | 'selected' | 'skipped' | 'problems';
 const PAGE = 200;
@@ -689,6 +703,7 @@ function ColumnsStep({
 function ReviewStep({
   prepared,
   accounts,
+  categories,
   rows,
   setRows,
   onImported,
@@ -696,6 +711,7 @@ function ReviewStep({
 }: {
   prepared: PreparedImport;
   accounts: readonly Account[];
+  categories: readonly Category[];
   rows: StagedRow[];
   setRows: (r: StagedRow[]) => void;
   onImported: (res: CommitResult) => void;
@@ -736,6 +752,15 @@ function ReviewStep({
   );
   const setTransfer = (index: number, accountId: string | null) =>
     setRows(rows.map((r) => (r.index === index ? { ...r, transferAccountId: accountId } : r)));
+  const setCategory = (index: number, categoryId: string | null) =>
+    setRows(
+      rows.map((r) =>
+        r.index === index ? { ...r, categoryId, categorySource: categoryId ? 'you' : null } : r,
+      ),
+    );
+  const categorised = rows.filter(
+    (r) => r.include && r.status !== 'invalid' && !r.transferAccountId && r.categoryId,
+  ).length;
   const toggle = (index: number) =>
     setRows(
       rows.map((r) =>
@@ -773,6 +798,11 @@ function ReviewStep({
         <li>
           <strong>{summary.newRows}</strong> new
         </li>
+        {categorised > 0 && (
+          <li>
+            <strong>{categorised}</strong> categorised
+          </li>
+        )}
         {summary.duplicates > 0 && (
           <li>
             <strong>{summary.duplicates}</strong> already imported
@@ -869,6 +899,34 @@ function ReviewStep({
                   <span>Line {r.line}</span>
                   {r.reference && <span>Ref {r.reference}</span>}
                 </div>
+                {r.status !== 'invalid' && r.include && !r.transferAccountId && (
+                  <div className="review-category">
+                    <label className="visually-hidden" htmlFor={`cat-${r.index}`}>
+                      Category for line {r.line}
+                    </label>
+                    <select
+                      id={`cat-${r.index}`}
+                      value={r.categoryId ?? ''}
+                      data-empty={!r.categoryId}
+                      onChange={(e) => setCategory(r.index, e.target.value || null)}
+                    >
+                      <option value="">Uncategorised</option>
+                      <CategoryOptions
+                        categories={categories}
+                        workspace={prepared.account.workspace}
+                        kind={(r.amountCents ?? 0) > 0 ? 'income' : 'expense'}
+                      />
+                    </select>
+                    {r.categoryId && r.categorySource && r.categorySource !== 'you' && (
+                      <span className="review-category-source">
+                        {CATEGORY_SOURCE_TEXT[r.categorySource]}
+                        {r.categorySource === 'bank' && r.bankCategories?.[0] && (
+                          <> (“{r.bankCategories[0]}”)</>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {(r.errors.length > 0 ||
                   r.duplicateOf ||
                   r.identicalLines.length > 0 ||
@@ -1034,6 +1092,7 @@ function DoneStep({
 }) {
   const b: ImportBatch = result.batch;
   const plural = result.created === 1 ? '' : 's';
+  const toReview = result.created - result.categorised - result.transfers;
   return (
     <section className="step step-done" aria-labelledby="step-done">
       <Ring value={1} size={112} thickness={9} label="Import complete">
@@ -1058,12 +1117,30 @@ function DoneStep({
         {b.errorCount ? ` ${b.errorCount} couldn’t be read.` : ''}
       </p>
       <p className="small muted">
-        They’re marked <strong>Needs review</strong> so you can give each one a category.
+        {result.categorised > 0 && (
+          <>
+            <strong>{result.categorised}</strong> categorised automatically.{' '}
+          </>
+        )}
+        {toReview > 0 ? (
+          <>
+            {toReview === 1 ? 'One is' : `${toReview} are`} marked <strong>Needs review</strong> so
+            you can choose a category.
+          </>
+        ) : (
+          'Nothing needs a category.'
+        )}
       </p>
       <div className="done-actions">
-        <Link className="btn btn-primary btn-lg btn-block" to="/transactions?status=needs_review">
-          Review {result.created} transaction{plural}
-        </Link>
+        {toReview > 0 ? (
+          <Link className="btn btn-primary btn-lg btn-block" to="/transactions?status=needs_review">
+            Review {toReview} transaction{toReview === 1 ? '' : 's'}
+          </Link>
+        ) : (
+          <Link className="btn btn-primary btn-lg btn-block" to="/transactions">
+            See transactions
+          </Link>
+        )}
         <Link className="btn btn-lg btn-block" to="/">
           Go to Home
         </Link>
@@ -1304,6 +1381,7 @@ export function ImportPage() {
             key={`${prepared.fileName}-${JSON.stringify(prepared.staging.mapping)}`}
             prepared={prepared}
             accounts={data.accounts}
+            categories={data.categories}
             rows={rows}
             setRows={setRows}
             onImported={(res) => {

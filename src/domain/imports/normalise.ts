@@ -35,6 +35,12 @@ export const columnMappingSchema = z
      * mappings saved before fees were supported, which means "not used".
      */
     feeColumn: z.number().int().min(0).nullable().optional(),
+    /**
+     * Optional bank category columns (e.g. Capitec's "Category" and "Parent Category"), used to
+     * suggest one of your categories. Missing in older saved mappings, which means "not used".
+     */
+    categoryColumn: z.number().int().min(0).nullable().optional(),
+    parentCategoryColumn: z.number().int().min(0).nullable().optional(),
     /** Bank transaction ID / reference, used to tell identical same-day transactions apart. */
     referenceColumn: z.number().int().min(0).nullable(),
     balanceColumn: z.number().int().min(0).nullable(),
@@ -154,6 +160,8 @@ export interface NormalisedRow {
   feeCents?: Cents | null;
   /** True for the separate fee transaction split off a line that had both an amount and a fee. */
   splitFee?: boolean;
+  /** The bank's own category names for this line, most specific first (may be empty). */
+  bankCategories?: string[];
   errors: string[];
 }
 
@@ -254,9 +262,13 @@ export function normaliseRows(
       const b = amountCell(raw[mapping.balanceColumn]);
       balance = b.cents;
     }
+    const bankCategories = [mapping.categoryColumn, mapping.parentCategoryColumn]
+      .map((c) => (c != null ? (raw[c] ?? '').trim() : ''))
+      .filter(Boolean);
     return {
       line: i + offset,
       raw,
+      bankCategories,
       date,
       description,
       amountCents: amount,
@@ -276,6 +288,8 @@ const HEADER_HINTS: Record<string, RegExp> = {
   debit: /debit|money out|withdraw|paid out/i,
   credit: /credit|money in|deposit|paid in/i,
   fee: /^(bank )?(fees?|charges?|service (fees?|charges?))$/i,
+  category: /^(category|sub[- ]?category|transaction category|spending category)$/i,
+  parentCategory: /^(parent category|main category|category group)$/i,
   reference: /^(ref|reference|transaction id|id|cheque|statement ref)/i,
   balance: /balance/i,
 };
@@ -304,6 +318,8 @@ export function guessMapping(rows: readonly string[][]): ColumnMapping {
       debitColumn: null,
       creditColumn: null,
       feeColumn: null,
+      categoryColumn: null,
+      parentCategoryColumn: null,
       referenceColumn: null,
       balanceColumn: header.length > 3 ? 3 : null,
       dateFormat: 'auto',
@@ -325,6 +341,8 @@ export function guessMapping(rows: readonly string[][]): ColumnMapping {
     ...[amount, debit, credit, fee].filter((x): x is number => x !== null),
   ]);
   const reference = find('reference', [date, description ?? -1]);
+  const category = find('category', used);
+  const parentCategory = find('parentCategory', used);
   const signed = amount !== null || (debit === null && credit === null);
   return {
     hasHeader: true,
@@ -336,6 +354,8 @@ export function guessMapping(rows: readonly string[][]): ColumnMapping {
     debitColumn: signed ? null : debit,
     creditColumn: signed ? null : credit,
     feeColumn: fee,
+    categoryColumn: category,
+    parentCategoryColumn: parentCategory,
     referenceColumn: reference,
     balanceColumn: balance,
     dateFormat: 'auto',

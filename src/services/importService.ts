@@ -6,6 +6,7 @@ import {
   type ParsedCsv,
   type Staging,
   type StagedRow,
+  categoryFits,
   MAX_FILE_BYTES,
   buildStaging,
   guessMapping,
@@ -59,6 +60,16 @@ export function checkImportFile(file: { name: string; size: number }): void {
   }
 }
 
+/** Everything staging uses to suggest transfers and categories. */
+async function stagingContext(store: FinanceStore) {
+  return {
+    accounts: await store.accounts.list(),
+    transactions: await store.transactions.list(),
+    categories: await store.categories.list(),
+    rules: await store.categorisationRules.list(),
+  };
+}
+
 /**
  * Parse a statement into a staging area. Nothing is written. Uses the account's saved column
  * mapping when the header row matches, otherwise a best-effort guess the user then confirms.
@@ -82,20 +93,21 @@ export async function prepareImport(
   ) {
     mapping = profile.mapping;
     source = 'saved';
-    // Mappings saved before fee columns were supported don't mention one; pick it up from the
-    // header so fees aren't silently left out. An explicit "not used" (null) is respected.
-    if (mapping.feeColumn === undefined && mapping.hasHeader) {
-      mapping = { ...mapping, feeColumn: guessMapping(parsed.rows).feeColumn ?? null };
+    // Mappings saved before fee and bank-category columns were supported don't mention them; pick
+    // them up from the header so nothing is silently left out. An explicit "not used" (null) is
+    // respected.
+    if (mapping.hasHeader) {
+      const guess = guessMapping(parsed.rows);
+      for (const key of ['feeColumn', 'categoryColumn', 'parentCategoryColumn'] as const) {
+        if (mapping[key] === undefined) mapping = { ...mapping, [key]: guess[key] ?? null };
+      }
     }
   } else {
     headerChanged = !!profile;
     mapping = guessMapping(parsed.rows);
   }
   const existing = await store.transactions.byAccount(account.id);
-  const context = {
-    accounts: await store.accounts.list(),
-    transactions: await store.transactions.list(),
-  };
+  const context = await stagingContext(store);
   return {
     account,
     fileName: input.fileName,
@@ -113,10 +125,7 @@ export async function restage(
   mapping: ColumnMapping,
 ): Promise<PreparedImport> {
   const existing = await store.transactions.byAccount(prepared.account.id);
-  const context = {
-    accounts: await store.accounts.list(),
-    transactions: await store.transactions.list(),
-  };
+  const context = await stagingContext(store);
   return {
     ...prepared,
     staging: buildStaging(prepared.parsed.rows, mapping, prepared.account, existing, context),
@@ -141,6 +150,8 @@ export interface CommitInput {
 export interface CommitResult {
   batch: ImportBatch;
   created: number;
+  /** Transactions that got a category on import (the rest are left for review). */
+  categorised: number;
   /** Rows imported as transfers between your own accounts. */
   transfers: number;
 }
@@ -164,6 +175,12 @@ export async function commitImport(
   const now = clock.now();
   const batchId = newId();
   const dates = selected.map((r) => r.date!).sort();
+  const categories = new Map((await store.categories.list()).map((c) => [c.id, c]));
+  /** The row's suggested or chosen category, if it (still) fits this account and amount. */
+  const categoryFor = (r: StagedRow) =>
+    r.categoryId && categoryFits(categories.get(r.categoryId), account, r.amountCents!)
+      ? r.categoryId
+      : null;
 
   const base: Transaction[] = selected.map((r) => ({
     id: newId(),
@@ -173,9 +190,10 @@ export async function commitImport(
     originalDescription: r.raw.join(' | ').slice(0, 500),
     amountCents: r.amountCents!,
     type: r.amountCents! > 0 ? 'income' : 'expense',
-    categoryId: null,
+    categoryId: categoryFor(r),
     workspace: account.workspace,
-    status: 'needs_review',
+    // Categorised rows are done; the rest wait in "Needs review" for a category.
+    status: categoryFor(r) ? 'posted' : 'needs_review',
     source: 'csv',
     importBatchId: batchId,
     fingerprint: r.fingerprint!,
@@ -288,7 +306,12 @@ export async function commitImport(
       );
     }
   });
-  return { batch, created: transactions.length, transfers: transferCount };
+  return {
+    batch,
+    created: transactions.length,
+    categorised: transactions.filter((t) => t.type !== 'transfer' && t.categoryId).length,
+    transfers: transferCount,
+  };
 }
 
 /**

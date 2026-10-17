@@ -1,3 +1,4 @@
+import type { CategorySource } from './categorise';
 import type { TransferSuggestion } from './transfers';
 import type { Account, Transaction } from '../models';
 import { type IsoDate, diffDays } from '../dates';
@@ -28,6 +29,9 @@ export interface StagedRow extends NormalisedRow {
   transferSuggestion?: TransferSuggestion | null;
   /** The user's choice: import as a transfer with this account, or null for income/expense. */
   transferAccountId?: string | null;
+  /** Category to give the transaction (suggested, or chosen in review); null = uncategorised. */
+  categoryId?: string | null;
+  categorySource?: CategorySource | null;
 }
 
 /** Days either side within which a manually entered transaction is treated as a possible match. */

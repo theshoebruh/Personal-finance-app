@@ -340,3 +340,77 @@ describe('bank fees', () => {
     expect(p.staging.rows.filter((r) => r.status === 'new')).toHaveLength(4);
   });
 });
+
+describe('automatic categories', () => {
+  const STATEMENT = `Nr,Account,Posting Date,Transaction Date,Description,Original Description,Parent Category,Category,Money In,Money Out,Fee,Balance
+1,0000000000,2026-03-02,2026-03-01 13:40,Coffee shop,COFFEE SHOP,Food,Groceries,,-50.00,,950.00
+2,0000000000,2026-03-02,2026-03-02 23:20,SMS Notification Fee,SMS NOTIFICATION FEE,Fees,Fees,,,-0.70,949.30
+3,0000000000,2026-03-03,2026-03-02 10:00,Mystery shop 001,MYSTERY,Other,Uncategorised,,-100.00,,849.30
+`;
+
+  it('saves suggested categories, and only uncategorised rows wait for review', async () => {
+    const p = await prepareImport(store, { accountId, text: STATEMENT });
+    const res = await commitImport(store, { prepared: p, rows: p.staging.rows, saveMapping: true });
+    expect(res).toMatchObject({ created: 3, categorised: 2, transfers: 0 });
+    const txns = await store.transactions.byAccount(accountId);
+    expect(
+      txns
+        .map((t) => [t.description, t.categoryId, t.status])
+        .sort((a, b) => (a[0]! < b[0]! ? -1 : 1)),
+    ).toEqual([
+      ['Coffee shop', 'cat-groceries', 'posted'],
+      ['Mystery shop 001', null, 'needs_review'],
+      ['SMS Notification Fee', 'cat-bank-fees', 'posted'],
+    ]);
+  });
+
+  it('keeps the category you choose in review, and leaves it off if you clear it', async () => {
+    const p = await prepareImport(store, { accountId, text: STATEMENT });
+    const rows = p.staging.rows.map((r) =>
+      r.description === 'Coffee shop'
+        ? { ...r, categoryId: 'cat-eating-out', categorySource: 'you' as const }
+        : r.description === 'SMS Notification Fee'
+          ? { ...r, categoryId: null, categorySource: null }
+          : r,
+    );
+    await commitImport(store, { prepared: p, rows, saveMapping: true });
+    const byDesc = new Map(
+      (await store.transactions.byAccount(accountId)).map((t) => [t.description, t]),
+    );
+    expect(byDesc.get('Coffee shop')?.categoryId).toBe('cat-eating-out');
+    expect(byDesc.get('SMS Notification Fee')).toMatchObject({
+      categoryId: null,
+      status: 'needs_review',
+    });
+  });
+
+  it('learns from a category you set, for the next statement', async () => {
+    const first = await prepareImport(store, { accountId, text: STATEMENT });
+    await commitImport(store, { prepared: first, rows: first.staging.rows, saveMapping: true });
+    const mystery = (await store.transactions.byAccount(accountId)).find((t) =>
+      t.description.startsWith('Mystery'),
+    )!;
+    await bulkSetCategory(store, [mystery.id], 'cat-household');
+
+    const april = STATEMENT.replace(/2026-03-0(\d)/g, '2026-04-0$1').replace('001', '002');
+    const next = await prepareImport(store, { accountId, text: april });
+    const row = next.staging.rows.find((r) => r.description.startsWith('Mystery'))!;
+    expect(row).toMatchObject({ categoryId: 'cat-household', categorySource: 'learned' });
+  });
+
+  it('picks up the bank category columns for column settings saved before they were supported', async () => {
+    const first = await prepareImport(store, { accountId, text: STATEMENT });
+    await commitImport(store, { prepared: first, rows: first.staging.rows, saveMapping: true });
+    const profile = (await store.importProfiles.get(accountId))!;
+    const { categoryColumn: _c, parentCategoryColumn: _p, ...oldMapping } = profile.mapping;
+    await store.importProfiles.put({ ...profile, mapping: oldMapping });
+
+    const april = STATEMENT.replace(/2026-03-0(\d)/g, '2026-04-0$1');
+    const p = await prepareImport(store, { accountId, text: april });
+    expect(p.mappingSource).toBe('saved');
+    expect(p.staging.mapping).toMatchObject({ categoryColumn: 7, parentCategoryColumn: 6 });
+    expect(p.staging.rows.find((r) => r.description === 'Coffee shop')?.categoryId).toBe(
+      'cat-groceries',
+    );
+  });
+});
