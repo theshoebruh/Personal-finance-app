@@ -2,6 +2,7 @@ import {
   centsToDecimalString,
   divideRounded,
   formatZAR,
+  formatZARWhole,
   parseAmountToCents,
   percentOf,
   sumCents,
@@ -51,5 +52,7 @@ describe('money', () => {
     expect(formatZAR(123456)).toMatch(/R\s?1\s?234[,.]56/);
     expect(centsToDecimalString(-5)).toBe('-0.05');
     expect(centsToDecimalString(123456)).toBe('1234.56');
+    expect(formatZARWhole(123456)).toMatch(/^R\s?1\s?235$/);
+    expect(formatZARWhole(-14193)).toMatch(/^-R\s?142$/);
   });
 });

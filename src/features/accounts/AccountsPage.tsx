@@ -30,6 +30,7 @@ import {
   Money,
   useStatus,
 } from '@/components/ui';
+import { PageHeader } from '@/components/PageHeader';
 
 interface FormState {
   name: string;
@@ -296,12 +297,16 @@ export function AccountsPage() {
 
   return (
     <>
-      <div className="topbar">
-        <h1>Accounts</h1>
-        <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>
-          Add account
-        </button>
-      </div>
+      <PageHeader
+        title="Accounts"
+        actions={
+          <>
+            <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>
+              Add account
+            </button>
+          </>
+        }
+      />
 
       <Alert tone="info">
         Balances are <strong>calculated</strong> from the opening balance plus transactions recorded

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
-import { formatZAR, type Cents } from '@/domain/money';
+import { formatZAR, formatZARWhole, type Cents } from '@/domain/money';
+import { Icon, type IconName } from './icons';
 import { formatDisplayDate, type IsoDate } from '@/domain/dates';
 import { WORKSPACE_LABELS, type WorkspaceView } from '@/domain/models';
 
@@ -7,6 +8,8 @@ export function Money({
   cents,
   signed = false,
   tone = false,
+  whole = false,
+  split = false,
   className = '',
 }: {
   cents: Cents;
@@ -14,14 +17,27 @@ export function Money({
   signed?: boolean;
   /** Colour positive/negative amounts (always paired with the sign, never colour alone). */
   tone?: boolean;
+  /** Round to whole rand (compact labels; the exact figure must be shown elsewhere). */
+  whole?: boolean;
+  /** Set the cents smaller than the rand, for headline figures. */
+  split?: boolean;
   className?: string;
 }) {
   const toneClass = tone ? (cents < 0 ? 'negative' : cents > 0 ? 'positive' : '') : '';
-  const text = formatZAR(cents);
+  const text = whole ? formatZARWhole(cents) : formatZAR(cents);
+  const sign = signed && cents > 0 ? '+' : '';
+  const comma = split && !whole ? text.lastIndexOf(',') : -1;
   return (
     <span className={`num ${toneClass} ${className}`.trim()}>
-      {signed && cents > 0 ? '+' : ''}
-      {text}
+      {sign}
+      {comma > 0 ? (
+        <>
+          {text.slice(0, comma)}
+          <span className="num-cents">{text.slice(comma)}</span>
+        </>
+      ) : (
+        text
+      )}
     </span>
   );
 }
@@ -98,9 +114,22 @@ export function Badge({
   return <span className={kind === 'default' ? 'badge' : `badge badge-${kind}`}>{children}</span>;
 }
 
-export function Empty({ title, children }: { title: string; children?: ReactNode }) {
+export function Empty({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon?: IconName;
+  children?: ReactNode;
+}) {
   return (
     <div className="empty">
+      {icon && (
+        <span className="empty-icon">
+          <Icon name={icon} size={26} />
+        </span>
+      )}
       <h3>{title}</h3>
       {children}
     </div>

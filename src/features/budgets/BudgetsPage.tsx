@@ -37,6 +37,7 @@ import {
   WorkspaceSwitcher,
   useStatus,
 } from '@/components/ui';
+import { PageHeader } from '@/components/PageHeader';
 import { AccountOptions, CategoryOptions, lookup } from '../shared';
 
 function IncomePlanCard({ data }: { data: FinanceData }) {
@@ -706,10 +707,14 @@ export function BudgetsPage() {
   if (!data) return <Loading />;
   return (
     <>
-      <div className="topbar">
-        <h1>Budgets</h1>
-        <WorkspaceSwitcher value={view} onChange={setView} />
-      </div>
+      <PageHeader
+        title="Budgets"
+        actions={
+          <>
+            <WorkspaceSwitcher value={view} onChange={setView} />
+          </>
+        }
+      />
       <div className="grid grid-2">
         {view !== 'business' && <IncomePlanCard data={data} />}
         <RecurringItems data={data} />

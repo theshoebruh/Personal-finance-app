@@ -28,6 +28,7 @@ import {
   readFileText,
   useStatus,
 } from '@/components/ui';
+import { PageHeader } from '@/components/PageHeader';
 
 function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) => void }) {
   const { store, today } = useApp();
@@ -652,9 +653,7 @@ export function SettingsPage() {
   if (!data) return <Loading />;
   return (
     <>
-      <div className="topbar">
-        <h1>Settings</h1>
-      </div>
+      <PageHeader title="Settings" />
       <div className="grid">
         <SyncCard />
         <Card title="Budget settings">

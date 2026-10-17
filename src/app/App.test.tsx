@@ -126,3 +126,57 @@ describe('core flow', () => {
     await expectAvailable('R 10 000,00');
   });
 });
+
+describe('navigation', () => {
+  it('opens the Add sheet from the tab bar, with importing a statement first', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<App db={db} store={store} initialPath="/" />);
+    const tabs = (await screen.findAllByRole('navigation', { name: 'Main' })).find((n) =>
+      n.classList.contains('tab-bar'),
+    )!;
+    const add = within(tabs).getByRole('button', { name: 'Add' });
+    await user.click(add);
+    const sheet = screen.getByRole('dialog', { name: 'Add' });
+    const actions = within(sheet).getAllByRole('link');
+    expect(actions[0]).toHaveAccessibleName(/Import bank statement/);
+    expect(actions[0]).toHaveAttribute('href', '/import');
+    expect(actions[0]).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(add).toHaveFocus();
+
+    await user.click(add);
+    await user.click(within(screen.getByRole('dialog')).getByRole('link', { name: /Import/ }));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Import statement' }),
+    ).toBeVisible();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('lists the other pages under More, and they lead back to More', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<App db={db} store={store} initialPath="/more" />);
+    expect(await screen.findByRole('heading', { level: 1, name: 'More' })).toBeVisible();
+    const tabs = screen
+      .getAllByRole('navigation', { name: 'Main' })
+      .find((n) => n.classList.contains('tab-bar'))!;
+    expect(within(tabs).getByRole('link', { name: 'More' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    await user.click(within(screen.getByRole('main')).getByRole('link', { name: /Reports/ }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Reports' })).toBeVisible();
+    // More stays highlighted on pages reached from it.
+    expect(within(tabs).getByRole('link', { name: 'More' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    const back = screen
+      .getAllByRole('link', { name: 'More' })
+      .find((a) => a.classList.contains('back-link'))!;
+    await user.click(back);
+    expect(await screen.findByRole('heading', { level: 1, name: 'More' })).toBeVisible();
+  });
+});

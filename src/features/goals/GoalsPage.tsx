@@ -24,6 +24,7 @@ import {
   WorkspaceSwitcher,
   useStatus,
 } from '@/components/ui';
+import { PageHeader } from '@/components/PageHeader';
 import { AccountOptions } from '../shared';
 
 function GoalForm({
@@ -343,10 +344,7 @@ export function GoalsPage() {
 
   return (
     <>
-      <div className="topbar">
-        <h1>Goals</h1>
-        <WorkspaceSwitcher value={view} onChange={setView} />
-      </div>
+      <PageHeader title="Goals" actions={<WorkspaceSwitcher value={view} onChange={setView} />} />
       <Alert tone="info">
         Goal balances are <strong>virtual allocations</strong> of your real money — they never add
         to your cash. Allocations held in spendable accounts are reserved out of available-to-spend.

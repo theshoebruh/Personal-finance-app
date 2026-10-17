@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { useApp, useFinanceData } from '@/app/AppContext';
@@ -30,6 +30,7 @@ import {
   WorkspaceSwitcher,
   useStatus,
 } from '@/components/ui';
+import { PageHeader } from '@/components/PageHeader';
 import { AccountOptions, CategoryOptions, lookup } from '../shared';
 import { ConvertToTransferPanel, TransactionForm, TransferForm } from './TransactionForms';
 import { unlinkPayment } from '@/services/planningService';
@@ -39,13 +40,22 @@ type Panel = { kind: 'new' } | { kind: 'transfer' } | { kind: 'edit'; txn: Trans
 
 const PAGE_SIZE = 100;
 
+function panelFromParam(value: string | null): Panel {
+  return value === '1' ? { kind: 'new' } : value === 'transfer' ? { kind: 'transfer' } : null;
+}
+
 export function TransactionsPage() {
   const { store, view, setView, today } = useApp();
   const data = useFinanceData();
   const { run, statusNode, setStatus } = useStatus();
   const confirm = useConfirm();
   const [params] = useSearchParams();
-  const [panel, setPanel] = useState<Panel>(params.get('new') === '1' ? { kind: 'new' } : null);
+  const [panel, setPanel] = useState<Panel>(panelFromParam(params.get('new')));
+  // The Add sheet can open a form while this page is already showing.
+  const newParam = params.get('new');
+  useEffect(() => {
+    if (newParam) setPanel(panelFromParam(newParam));
+  }, [newParam]);
   const [search, setSearch] = useState('');
   const [accountId, setAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -196,10 +206,11 @@ export function TransactionsPage() {
 
   return (
     <>
-      <div className="topbar">
-        <h1>Transactions</h1>
-        <WorkspaceSwitcher value={view} onChange={setView} />
-      </div>
+      <PageHeader
+        title="Activity"
+        subtitle="All your transactions, newest first"
+        actions={<WorkspaceSwitcher value={view} onChange={setView} />}
+      />
 
       <div className="toolbar">
         <div className="btn-row">

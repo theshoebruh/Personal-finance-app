@@ -4,8 +4,11 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useApp, useFinanceData } from '@/app/AppContext';
 import { buildDashboard } from '@/domain/calculations/dashboard';
+import { categoryBreakdown } from '@/domain/calculations/breakdown';
+import { spendingByCategory } from '@/domain/calculations/reporting';
 import { WORKSPACE_LABELS } from '@/domain/models';
 import { formatDisplayDate } from '@/domain/dates';
+import { formatZAR } from '@/domain/money';
 import { linkPaymentToOccurrence, setOccurrenceSettled } from '@/services/planningService';
 import type { Occurrence } from '@/domain/calculations/recurring';
 import { loadDemoData } from '@/services/demoService';
@@ -17,10 +20,19 @@ import {
   Empty,
   Loading,
   Money,
-  ProgressBar,
   WorkspaceSwitcher,
   useStatus,
 } from '@/components/ui';
+import { PageHeader } from '@/components/PageHeader';
+import {
+  BudgetBars,
+  Donut,
+  Ring,
+  StatRing,
+  fraction,
+  percentLabel,
+  type ChartColour,
+} from '@/components/charts';
 import { lookup } from '../shared';
 
 const ESSENTIAL_SOURCE_TEXT = {
@@ -29,6 +41,19 @@ const ESSENTIAL_SOURCE_TEXT = {
   history: 'average essential spending over recent complete months',
   insufficient_data: '',
 } as const;
+
+const shortDate = new Intl.DateTimeFormat('en-ZA', {
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'UTC',
+});
+
+const dayFormat = new Intl.DateTimeFormat('en-ZA', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+});
 
 export function DashboardPage() {
   const { store, view, setView, today } = useApp();
@@ -56,16 +81,23 @@ export function DashboardPage() {
     [data, today, view],
   );
 
-  if (!data || !model) return <Loading />;
+  const breakdown = useMemo(() => {
+    if (!data || !model) return null;
+    const cats = lookup(data.categories);
+    return categoryBreakdown(
+      spendingByCategory(data.transactions, view, model.period.start, model.period.end),
+      (id) => (id ? (cats.get(id)?.name ?? 'Unknown') : 'Uncategorised'),
+    );
+  }, [data, model, view]);
+
+  if (!data || !model || !breakdown) return <Loading />;
   const { ats } = model;
 
   if (data.accounts.length === 0) {
     return (
       <>
-        <div className="topbar">
-          <h1>Welcome</h1>
-        </div>
-        <Card className="hero">
+        <PageHeader title="Welcome" />
+        <Card className="hero onboarding">
           <h2>Let's work out what is safe to spend</h2>
           <p className="muted">
             {sync
@@ -74,26 +106,41 @@ export function DashboardPage() {
             No bank login is needed — you add accounts and import CSV statements or add transactions
             yourself.
           </p>
-          <ol className="stack">
+          <ol className="steps-list">
             <li>
-              <Link to="/settings">Check your income plan and set your payday</Link> (defaults:
-              R12,000 salary, R1,200 tithe, 20% savings).
+              <span className="steps-num" aria-hidden="true">
+                1
+              </span>
+              <span>
+                <Link to="/settings">Check your income plan and set your payday</Link> (defaults:
+                R12,000 salary, R1,200 tithe, 20% savings).
+              </span>
             </li>
             <li>
-              <Link to="/accounts">Add your accounts</Link> with their current balances.
+              <span className="steps-num" aria-hidden="true">
+                2
+              </span>
+              <span>
+                <Link to="/accounts">Add your accounts</Link> with their current balances.
+              </span>
             </li>
             <li>
-              <Link to="/budgets">Add salary, tithe and bills</Link> as recurring items, and
-              optional spending limits.
+              <span className="steps-num" aria-hidden="true">
+                3
+              </span>
+              <span>
+                <Link to="/budgets">Add salary, tithe and bills</Link> as recurring items, and
+                optional spending limits.
+              </span>
             </li>
           </ol>
           <div className="btn-row">
-            <Link className="btn btn-primary" to="/accounts">
+            <Link className="btn btn-primary btn-lg" to="/accounts">
               Add your first account
             </Link>
             <button
               type="button"
-              className="btn"
+              className="btn btn-lg"
               onClick={() =>
                 void run(
                   () => loadDemoData(store, today),
@@ -115,6 +162,8 @@ export function DashboardPage() {
   const alerts = model.alerts.filter((a) => !dismissed.has(a.id));
   const periodWord = ats.window.basis === 'next_payday' ? 'payday' : 'month-end';
   const hasDemo = data.accounts.some((a) => a.isDemo);
+  const budget = model.budgetOverview;
+  const hasBudget = budget.limitCents > 0;
 
   const paymentSuggestions = model.paymentSuggestions;
   function suggestionsFor(o: Occurrence) {
@@ -149,10 +198,11 @@ export function DashboardPage() {
 
   return (
     <>
-      <div className="topbar">
-        <h1>Dashboard</h1>
-        <WorkspaceSwitcher value={view} onChange={setView} />
-      </div>
+      <PageHeader
+        title="Home"
+        subtitle={`${dayFormat.format(new Date(`${today}T00:00:00Z`))} · day ${model.period.dayNumber} of ${model.period.totalDays}`}
+        actions={<WorkspaceSwitcher value={view} onChange={setView} />}
+      />
 
       {sync &&
         (sync.status.conflicts > 0 ||
@@ -180,39 +230,70 @@ export function DashboardPage() {
         </Alert>
       )}
 
-      <div className="grid grid-3">
-        <Card className="hero span-all" title={`Available to spend · ${WORKSPACE_LABELS[view]}`}>
-          <p className="hero-amount" aria-describedby="ats-basis">
-            <Money cents={ats.availableCents} />
-          </p>
-          <div className="hero-sub">
-            <span>
-              <strong>
-                <Money cents={ats.dailyAllowanceCents} />
-              </strong>{' '}
-              a day until <DateText date={ats.window.end} />
-            </span>
-            <span>
-              {ats.window.daysRemaining} day{ats.window.daysRemaining === 1 ? '' : 's'} left (today
-              counts)
-            </span>
-            <span>
-              {ats.window.nextPayday ? (
-                <>
-                  Next payday <DateText date={ats.window.nextPayday} />
-                </>
-              ) : (
-                'No payday set — using month-end'
-              )}{' '}
-              · <Link to="/settings">Edit</Link>
-            </span>
+      <div className="home-grid">
+        <Card className="hero home-hero" title={`Available to spend · ${WORKSPACE_LABELS[view]}`}>
+          <div className="hero-body">
+            {hasBudget ? (
+              <Ring
+                value={fraction(budget.remainingCents, budget.limitCents)}
+                size={132}
+                thickness={13}
+                tone={budget.remainingCents < 0 ? 'negative' : 'positive'}
+                label={
+                  budget.remainingCents < 0
+                    ? `Over this period's budget by ${formatZAR(-budget.remainingCents)}`
+                    : `${percentLabel(budget.remainingCents, budget.limitCents)} of this period's budget left: ${formatZAR(budget.remainingCents)} of ${formatZAR(budget.limitCents)}`
+                }
+              >
+                <span className="ring-big">
+                  {budget.remainingCents < 0
+                    ? 'Over'
+                    : percentLabel(budget.remainingCents, budget.limitCents)}
+                </span>
+                <span className="ring-caption">budget left</span>
+              </Ring>
+            ) : (
+              <Ring
+                value={fraction(ats.window.daysRemaining, model.period.totalDays)}
+                size={132}
+                thickness={13}
+                tone="chart-1"
+                label={`${ats.window.daysRemaining} days left until ${formatDisplayDate(ats.window.end)}`}
+              >
+                <span className="ring-big">{ats.window.daysRemaining}</span>
+                <span className="ring-caption">days left</span>
+              </Ring>
+            )}
+            <div className="hero-figures">
+              <p className="hero-amount" aria-describedby="ats-basis">
+                <Money cents={ats.availableCents} split />
+              </p>
+              <p className="hero-line">
+                <strong>
+                  <Money cents={ats.dailyAllowanceCents} />
+                </strong>{' '}
+                a day until <DateText date={ats.window.end} />
+              </p>
+              {hasBudget && (
+                <p className="hero-line">
+                  <strong>
+                    <Money cents={Math.max(0, budget.remainingCents)} />
+                  </strong>{' '}
+                  of <Money cents={budget.limitCents} /> budget left
+                </p>
+              )}
+              <p className="hero-line">
+                {ats.window.nextPayday ? (
+                  <>
+                    Next payday <DateText date={ats.window.nextPayday} />
+                  </>
+                ) : (
+                  'No payday set — using month-end'
+                )}{' '}
+                · <Link to="/settings">Edit</Link>
+              </p>
+            </div>
           </div>
-          <p id="ats-basis" className="small faint">
-            {ats.basis === 'cash_and_budget'
-              ? 'Based on spendable cash, unpaid commitments and reserves, capped by your remaining wants budget.'
-              : 'Based on spendable cash minus unpaid commitments and reserves (no category-budget cap applied).'}{' '}
-            The daily figure is guidance, not a target to spend.
-          </p>
           {ats.shortfallCents > 0 && (
             <Alert tone="negative">
               Commitments and reserves exceed spendable cash by <Money cents={ats.shortfallCents} />
@@ -228,6 +309,12 @@ export function DashboardPage() {
 
           <details className="explainer">
             <summary>How this is calculated</summary>
+            <p id="ats-basis" className="xs faint">
+              {ats.basis === 'cash_and_budget'
+                ? 'Based on spendable cash, unpaid commitments and reserves, capped by your remaining wants budget.'
+                : 'Based on spendable cash minus unpaid commitments and reserves (no category-budget cap applied).'}{' '}
+              The daily figure is guidance, not a target to spend.
+            </p>
             <table className="breakdown">
               <caption className="visually-hidden">Available to spend breakdown</caption>
               <tbody>
@@ -359,8 +446,77 @@ export function DashboardPage() {
           </details>
         </Card>
 
+        <div className="stat-rings home-rings" aria-label="Period at a glance" role="group">
+          <StatRing
+            value={fraction(ats.window.daysRemaining, model.period.totalDays)}
+            tone="chart-1"
+            label={`${ats.window.daysRemaining} day${ats.window.daysRemaining === 1 ? '' : 's'} left until ${formatDisplayDate(ats.window.end)}, today included`}
+            centre={ats.window.daysRemaining}
+            caption="Days left"
+            detail={<>to {shortDate.format(new Date(`${ats.window.end}T00:00:00Z`))}</>}
+          />
+          {view !== 'business' ? (
+            <StatRing
+              value={fraction(
+                ats.plannedSavings.madeThisPeriodCents,
+                ats.plannedSavings.targetCents,
+              )}
+              tone="chart-6"
+              label={`Saved ${formatZAR(ats.plannedSavings.madeThisPeriodCents)} of a ${formatZAR(ats.plannedSavings.targetCents)} target this period`}
+              centre={percentLabel(
+                ats.plannedSavings.madeThisPeriodCents,
+                ats.plannedSavings.targetCents,
+              )}
+              caption="Saved"
+              detail={<Money cents={ats.plannedSavings.madeThisPeriodCents} whole />}
+            />
+          ) : (
+            <StatRing
+              value={fraction(
+                model.period.summary.netExpenseCents,
+                model.period.summary.incomeCents,
+              )}
+              tone="chart-2"
+              label={`Spent ${formatZAR(model.period.summary.netExpenseCents)} against income of ${formatZAR(model.period.summary.incomeCents)} this period`}
+              centre={percentLabel(
+                model.period.summary.netExpenseCents,
+                model.period.summary.incomeCents,
+              )}
+              caption="Spent of income"
+              detail={<Money cents={model.period.summary.netExpenseCents} whole />}
+            />
+          )}
+          {view !== 'business' && model.emergency.targetCents !== null ? (
+            <StatRing
+              value={(model.emergency.percent ?? 0) / 100}
+              tone="chart-4"
+              label={`Emergency fund ${model.emergency.percent ?? 0}% complete: ${formatZAR(model.emergency.balanceCents)} of ${formatZAR(model.emergency.targetCents)}`}
+              centre={`${model.emergency.percent ?? 0}%`}
+              caption="Emergency fund"
+              detail={<Money cents={model.emergency.balanceCents} whole />}
+            />
+          ) : (
+            <Link className="stat-ring" to={view === 'business' ? '/reports' : '/goals'}>
+              <Ring
+                value={0}
+                size={72}
+                thickness={8}
+                label={view === 'business' ? 'Reports' : 'Emergency fund target not set'}
+              >
+                <span className="stat-ring-centre">—</span>
+              </Ring>
+              <span className="stat-ring-caption">
+                {view === 'business' ? 'Reports' : 'Emergency fund'}
+              </span>
+              <span className="stat-ring-detail link-text">
+                {view === 'business' ? 'Open' : 'Set a target'}
+              </span>
+            </Link>
+          )}
+        </div>
+
         {alerts.length > 0 && (
-          <Card title="Alerts" className="span-all">
+          <Card title="Needs your attention" className="span-all">
             {alerts.map((a) => (
               <Alert
                 key={a.id}
@@ -391,30 +547,161 @@ export function DashboardPage() {
           </Card>
         )}
 
-        <Card title="Spendable cash" action={<Badge kind="actual">Actual</Badge>}>
-          <p className="stat-value">
-            <Money cents={ats.eligibleCash.totalCents} tone />
-          </p>
-          <ul className="list">
-            {ats.eligibleCash.included.map((l) => (
-              <li key={l.accountId}>
-                <span className="primary title">{l.name}</span>
-                <Money cents={l.balanceCents} />
-              </li>
-            ))}
-            {ats.eligibleCash.excluded.map((l) => (
-              <li key={l.accountId}>
-                <span className="primary title muted">{l.name} (not spendable)</span>
-                <Money cents={l.balanceCents} className="muted" />
-              </li>
-            ))}
-          </ul>
-          <Link to="/accounts" className="small">
-            Manage accounts
-          </Link>
+        <Card
+          title="Spent this period"
+          action={
+            <Link className="card-link" to="/reports">
+              Reports ›
+            </Link>
+          }
+        >
+          {breakdown.slices.length === 0 ? (
+            <Empty title="No spending yet this period" icon="reports">
+              <p className="small">Import a statement or add a transaction to see where it goes.</p>
+            </Empty>
+          ) : (
+            <Donut
+              label={`Spending by category, ${formatDisplayDate(model.period.start)} to ${formatDisplayDate(model.period.end)}`}
+              centreLabel="spent"
+              totalCents={breakdown.totalCents}
+              segments={breakdown.slices.map((s, i) => ({
+                key: s.key,
+                label: s.label,
+                cents: s.cents,
+                colour: (s.key === 'other' ? 0 : i + 1) as ChartColour,
+              }))}
+            />
+          )}
         </Card>
 
-        <Card title="Upcoming commitments" action={<Badge kind="forecast">Forecast</Badge>}>
+        <Card
+          title="Budget this period"
+          action={
+            <Link className="card-link" to="/budgets">
+              Edit limits ›
+            </Link>
+          }
+        >
+          <p className="small muted">
+            <DateText date={model.period.start} /> – <DateText date={model.period.end} />
+            {model.period.mode === 'calendar_month' && data.settings.paydayDayOfMonth !== null && (
+              <span className="faint"> (calendar month — switch to pay periods in Settings)</span>
+            )}
+          </p>
+          {budget.lines.length === 0 ? (
+            <Empty title="No spending limits yet" icon="budgets">
+              <p className="small">
+                <Link to="/budgets">Set monthly limits</Link> to track spending by category.
+              </p>
+            </Empty>
+          ) : (
+            <>
+              <div className="budget-summary">
+                <div>
+                  <span className="label">Budgeted</span>
+                  <Money cents={budget.limitCents} />
+                </div>
+                <div>
+                  <span className="label">Spent</span>
+                  <Money cents={budget.spentCents} />
+                </div>
+                <div>
+                  <span className="label">{budget.remainingCents < 0 ? 'Over by' : 'Left'}</span>
+                  <Money
+                    cents={Math.abs(budget.remainingCents)}
+                    className={budget.remainingCents < 0 ? 'negative' : 'positive'}
+                  />
+                </div>
+              </div>
+              <BudgetBars
+                label="Spending against each limit"
+                lines={budget.lines.map((l) => ({
+                  key: l.budgetId,
+                  label: l.categoryName,
+                  limitCents: l.limitCents,
+                  spentCents: l.spentCents,
+                  remainingCents: l.remainingCents,
+                }))}
+              />
+            </>
+          )}
+          {(budget.unbudgetedSpentCents > 0 || budget.uncategorisedSpentCents > 0) && (
+            <p className="xs faint">
+              Also spent: <Money cents={budget.unbudgetedSpentCents} /> in categories without a
+              limit
+              {budget.uncategorisedSpentCents > 0 && (
+                <>
+                  {' '}
+                  and <Money cents={budget.uncategorisedSpentCents} />{' '}
+                  <Link to="/transactions?status=needs_review">uncategorised</Link>
+                </>
+              )}
+              .
+            </p>
+          )}
+          <p className="xs faint">
+            Limits start fresh each period; unspent or overspent money stays in your account balance
+            and is reflected in what's available next period.
+          </p>
+          <details className="explainer">
+            <summary>
+              Last period (<DateText date={model.lastPeriod.start} /> –{' '}
+              <DateText date={model.lastPeriod.end} />)
+            </summary>
+            <table className="breakdown">
+              <tbody>
+                <tr>
+                  <th scope="row">Income</th>
+                  <td>
+                    <Money cents={model.lastPeriod.summary.incomeCents} />
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Spending</th>
+                  <td>
+                    <Money cents={-model.lastPeriod.summary.netExpenseCents} />
+                  </td>
+                </tr>
+                {model.lastPeriod.budgetLimitCents > 0 && (
+                  <tr>
+                    <th scope="row">
+                      Budgeted categories
+                      <span className="explain">
+                        <Money cents={model.lastPeriod.budgetSpentCents} /> spent of{' '}
+                        <Money cents={model.lastPeriod.budgetLimitCents} /> (today's limits)
+                      </span>
+                    </th>
+                    <td>
+                      <Money
+                        cents={
+                          model.lastPeriod.budgetLimitCents - model.lastPeriod.budgetSpentCents
+                        }
+                        signed
+                        tone
+                      />
+                    </td>
+                  </tr>
+                )}
+                {view !== 'business' && (
+                  <tr>
+                    <th scope="row">Saved</th>
+                    <td>
+                      <Money cents={model.lastPeriod.savingsMadeCents} />
+                    </td>
+                  </tr>
+                )}
+                <tr className="total">
+                  <th scope="row">Net</th>
+                  <td>
+                    <Money cents={model.lastPeriod.summary.netCents} signed tone />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </details>
+        </Card>
+
+        <Card title="Coming up" action={<Badge kind="forecast">Forecast</Badge>}>
           <p className="stat-value">
             <Money cents={ats.commitments.totalCents} />
           </p>
@@ -488,160 +775,6 @@ export function DashboardPage() {
           </p>
         </Card>
 
-        <Card
-          title="Budget this period"
-          action={
-            <Link className="btn btn-sm" to="/budgets">
-              Edit limits
-            </Link>
-          }
-        >
-          <p className="small">
-            <DateText date={model.period.start} /> – <DateText date={model.period.end} /> · day{' '}
-            {model.period.dayNumber} of {model.period.totalDays}
-            {model.period.mode === 'calendar_month' && data.settings.paydayDayOfMonth !== null && (
-              <span className="faint"> (calendar month — switch to pay periods in Settings)</span>
-            )}
-          </p>
-          {model.budgetOverview.lines.length === 0 ? (
-            <p className="small muted">
-              No category limits yet. <Link to="/budgets">Set monthly limits</Link> to track
-              spending by category.
-            </p>
-          ) : (
-            <>
-              <table className="breakdown">
-                <tbody>
-                  <tr>
-                    <th scope="row">Budgeted</th>
-                    <td>
-                      <Money cents={model.budgetOverview.limitCents} />
-                    </td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Spent so far</th>
-                    <td>
-                      <Money cents={model.budgetOverview.spentCents} />
-                    </td>
-                  </tr>
-                  <tr className="total">
-                    <th scope="row">
-                      {model.budgetOverview.remainingCents < 0 ? 'Over budget' : 'Remaining'}
-                    </th>
-                    <td>
-                      <Money cents={Math.abs(model.budgetOverview.remainingCents)} />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              <ul className="list budget-progress">
-                {model.budgetOverview.lines.map((l) => (
-                  <li key={l.budgetId}>
-                    <div className="row-between small">
-                      <span>{l.categoryName}</span>
-                      <span>
-                        {l.remainingCents < 0 ? (
-                          <Badge kind="warning">
-                            Over by <Money cents={-l.remainingCents} />
-                          </Badge>
-                        ) : (
-                          <>
-                            <Money cents={l.remainingCents} /> left of{' '}
-                            <Money cents={l.limitCents} />
-                          </>
-                        )}
-                      </span>
-                    </div>
-                    {l.limitCents > 0 && (
-                      <ProgressBar
-                        value={l.spentCents}
-                        max={l.limitCents}
-                        label={`${l.categoryName} budget used`}
-                      />
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {(model.budgetOverview.unbudgetedSpentCents > 0 ||
-            model.budgetOverview.uncategorisedSpentCents > 0) && (
-            <p className="xs faint">
-              Also spent: <Money cents={model.budgetOverview.unbudgetedSpentCents} /> in categories
-              without a limit
-              {model.budgetOverview.uncategorisedSpentCents > 0 && (
-                <>
-                  {' '}
-                  and <Money cents={model.budgetOverview.uncategorisedSpentCents} />{' '}
-                  <Link to="/transactions?status=needs_review">uncategorised</Link>
-                </>
-              )}
-              .
-            </p>
-          )}
-          <p className="xs faint">
-            Daily allowance: <Money cents={ats.dailyAllowanceCents} /> until{' '}
-            <DateText date={ats.window.end} />. Limits start fresh each period; unspent or overspent
-            money stays in your account balance and is reflected in what's available next period.
-          </p>
-          <details className="explainer">
-            <summary>
-              Last period (<DateText date={model.lastPeriod.start} /> –{' '}
-              <DateText date={model.lastPeriod.end} />)
-            </summary>
-            <table className="breakdown">
-              <tbody>
-                <tr>
-                  <th scope="row">Income</th>
-                  <td>
-                    <Money cents={model.lastPeriod.summary.incomeCents} />
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">Spending</th>
-                  <td>
-                    <Money cents={-model.lastPeriod.summary.netExpenseCents} />
-                  </td>
-                </tr>
-                {model.lastPeriod.budgetLimitCents > 0 && (
-                  <tr>
-                    <th scope="row">
-                      Budgeted categories
-                      <span className="explain">
-                        <Money cents={model.lastPeriod.budgetSpentCents} /> spent of{' '}
-                        <Money cents={model.lastPeriod.budgetLimitCents} /> (today's limits)
-                      </span>
-                    </th>
-                    <td>
-                      <Money
-                        cents={
-                          model.lastPeriod.budgetLimitCents - model.lastPeriod.budgetSpentCents
-                        }
-                        signed
-                        tone
-                      />
-                    </td>
-                  </tr>
-                )}
-                {view !== 'business' && (
-                  <tr>
-                    <th scope="row">Saved</th>
-                    <td>
-                      <Money cents={model.lastPeriod.savingsMadeCents} />
-                    </td>
-                  </tr>
-                )}
-                <tr className="total">
-                  <th scope="row">Net</th>
-                  <td>
-                    <Money cents={model.lastPeriod.summary.netCents} signed tone />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </details>
-        </Card>
-
         <Card title="This period" action={<Badge kind="actual">Actual</Badge>}>
           <table className="breakdown">
             <tbody>
@@ -697,8 +830,35 @@ export function DashboardPage() {
           )}
         </Card>
 
+        <Card
+          title="Spendable cash"
+          action={
+            <Link className="card-link" to="/accounts">
+              Accounts ›
+            </Link>
+          }
+        >
+          <p className="stat-value">
+            <Money cents={ats.eligibleCash.totalCents} tone />
+          </p>
+          <ul className="list">
+            {ats.eligibleCash.included.map((l) => (
+              <li key={l.accountId}>
+                <span className="primary title">{l.name}</span>
+                <Money cents={l.balanceCents} />
+              </li>
+            ))}
+            {ats.eligibleCash.excluded.map((l) => (
+              <li key={l.accountId}>
+                <span className="primary title muted">{l.name} (not spendable)</span>
+                <Money cents={l.balanceCents} className="muted" />
+              </li>
+            ))}
+          </ul>
+        </Card>
+
         {view !== 'business' && (
-          <Card title="Savings">
+          <Card title="Savings and emergency fund">
             <div className="stack">
               <div>
                 <div className="row-between small">
@@ -708,11 +868,6 @@ export function DashboardPage() {
                     <Money cents={ats.plannedSavings.targetCents} />
                   </span>
                 </div>
-                <ProgressBar
-                  value={ats.plannedSavings.madeThisPeriodCents}
-                  max={ats.plannedSavings.targetCents}
-                  label="Savings this period"
-                />
                 <p className="xs faint">
                   Target: {data.settings.savingsRatePercent}% of{' '}
                   <Money cents={ats.plannedSavings.budgetableIncomeCents} /> (salary after tithe).
@@ -745,13 +900,6 @@ export function DashboardPage() {
                     )}
                   </span>
                 </div>
-                {model.emergency.targetCents !== null && (
-                  <ProgressBar
-                    value={model.emergency.balanceCents}
-                    max={model.emergency.targetCents}
-                    label="Emergency fund progress"
-                  />
-                )}
                 <p className="xs faint">
                   {model.emergency.targetSource === 'essential_estimate' &&
                     model.essential.monthlyCents !== null && (
@@ -787,17 +935,25 @@ export function DashboardPage() {
         <Card
           title="Recent transactions"
           action={
-            <Link className="btn btn-sm btn-primary" to="/transactions?new=1">
-              Add
+            <Link className="card-link" to="/transactions">
+              All ›
             </Link>
           }
         >
           {model.recent.length === 0 ? (
-            <Empty title="Nothing recorded yet" />
+            <Empty title="Nothing recorded yet" icon="activity">
+              <p className="small">
+                <Link to="/import">Import a statement</Link> or{' '}
+                <Link to="/transactions?new=1">add a transaction</Link>.
+              </p>
+            </Empty>
           ) : (
             <ul className="list">
               {model.recent.map((t) => (
                 <li key={t.id}>
+                  <span className="tx-avatar" aria-hidden="true">
+                    {t.description.trim().slice(0, 1).toUpperCase() || '·'}
+                  </span>
                   <div className="primary">
                     <div className="title">{t.description}</div>
                     <div className="meta">
@@ -818,14 +974,11 @@ export function DashboardPage() {
               ))}
             </ul>
           )}
-          <div className="btn-row">
-            <Link to="/transactions" className="small">
-              All transactions
+          {model.uncategorisedCount > 0 && (
+            <Link className="btn btn-sm" to="/transactions?status=needs_review">
+              <Badge kind="warning">{model.uncategorisedCount}</Badge> to categorise
             </Link>
-            {model.uncategorisedCount > 0 && (
-              <Badge kind="warning">{model.uncategorisedCount} uncategorised</Badge>
-            )}
-          </div>
+          )}
         </Card>
       </div>
       {statusNode}
