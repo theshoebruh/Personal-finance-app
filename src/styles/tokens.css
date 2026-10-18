@@ -1,34 +1,56 @@
-/* Design tokens. Dark is the default (and currently only) theme. */
+/* Design tokens. Dark is the default (and currently only) theme: midnight navy, brass actions. */
 :root {
   color-scheme: dark;
 
-  --color-bg: #0f1115;
-  --color-surface: #171a21;
-  --color-surface-2: #1e222b;
-  --color-surface-3: #262b36;
-  --color-border: #2c323e;
-  --color-border-strong: #3a4252;
-  --color-text: #e8eaef;
-  --color-text-muted: #a3aab8;
-  --color-text-faint: #7d8596;
+  --color-bg: #0a0f1c;
+  --color-surface: #111829;
+  --color-surface-2: #172036;
+  --color-surface-3: #202b45;
+  --color-border: #222d48;
+  --color-border-strong: #33415f;
+  --color-text: #eef1f8;
+  --color-text-muted: #a3adc4;
+  --color-text-faint: #7a86a3;
 
-  --color-accent: #4ade80;
-  --color-accent-strong: #22c55e;
-  --color-accent-contrast: #052e14;
-  --color-positive: #4ade80;
-  --color-negative: #f87171;
-  --color-warning: #fbbf24;
-  --color-info: #60a5fa;
-  --color-forecast: #c4b5fd;
-  --color-focus: #93c5fd;
+  /* Brass marks what you can act on: primary buttons, the active tab, links. */
+  --color-accent: #f0bf5a;
+  --color-accent-strong: #e5ad3c;
+  --color-accent-contrast: #2a1d02;
+  --color-accent-bg: rgba(240, 191, 90, 0.12);
+  --color-link: #f3cd7f;
+  /* Green and coral only ever mean money in / on track and money out / over. */
+  --color-positive: #3ddc97;
+  --color-negative: #ff7b72;
+  --color-warning: #f5b84a;
+  --color-info: #8db8ef;
+  --color-forecast: #b9b0f5;
+  --color-focus: #f3cd7f;
 
-  --color-negative-bg: rgba(248, 113, 113, 0.12);
-  --color-warning-bg: rgba(251, 191, 36, 0.12);
-  --color-info-bg: rgba(96, 165, 250, 0.12);
-  --color-positive-bg: rgba(74, 222, 128, 0.12);
-  --color-forecast-bg: rgba(196, 181, 253, 0.12);
+  --color-negative-bg: rgba(255, 123, 114, 0.12);
+  --color-warning-bg: rgba(245, 184, 74, 0.12);
+  --color-info-bg: rgba(57, 135, 229, 0.14);
+  --color-positive-bg: rgba(61, 220, 151, 0.12);
+  --color-forecast-bg: rgba(185, 176, 245, 0.12);
 
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Chart categories, in fixed order (checked for colour-blind separation on --color-surface). */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #9085e9;
+  --chart-other: #5b6683;
+  --chart-track: var(--color-surface-3);
+  --chart-grid: #26324f;
+  --chart-axis: #3a4a70;
+
+  /* System fonts only: the CSP allows no web fonts. SF Pro on iPhone. */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
 
   --text-xs: 0.75rem;
@@ -36,8 +58,8 @@
   --text-md: 1rem;
   --text-lg: 1.125rem;
   --text-xl: 1.375rem;
-  --text-2xl: 1.75rem;
-  --text-hero: clamp(2.5rem, 9vw, 3.75rem);
+  --text-2xl: 1.875rem;
+  --text-hero: clamp(2.25rem, 9vw, 3.25rem);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -47,13 +69,14 @@
   --space-6: 2rem;
   --space-7: 3rem;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
 
   --touch-target: 44px;
-  --sidebar-width: 232px;
-  --bottom-nav-height: 64px;
+  --button-lg: 50px;
+  --sidebar-width: 236px;
+  --bottom-nav-height: 60px;
   --content-max: 1200px;
 
   --safe-top: env(safe-area-inset-top, 0px);

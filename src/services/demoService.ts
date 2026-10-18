@@ -24,7 +24,8 @@ export async function hasDemoData(store: FinanceStore): Promise<boolean> {
 }
 
 /**
- * Loads sample data so the app can be explored. Every demo record has `isDemo: true` and demo
+ * Loads sample data so the app can be explored. Every demo record has a fixed id, so devices that
+ * load demo data before syncing write the same records instead of duplicates (audit F-08). Every demo record has `isDemo: true` and demo
  * account names start with "Demo ·". Settings are never changed by demo data.
  */
 export async function loadDemoData(
@@ -53,7 +54,7 @@ export async function loadDemoData(
         openingBalanceDate: monthStart,
         includeInSpendable: true,
       },
-      opts,
+      { ...opts, id: 'demo-acc-main' },
     );
     const savings = await createAccount(
       store,
@@ -65,7 +66,7 @@ export async function loadDemoData(
         openingBalanceDate: monthStart,
         includeInSpendable: false,
       },
-      opts,
+      { ...opts, id: 'demo-acc-savings' },
     );
     const business = await createAccount(
       store,
@@ -77,10 +78,11 @@ export async function loadDemoData(
         openingBalanceDate: monthStart,
         includeInSpendable: true,
       },
-      opts,
+      { ...opts, id: 'demo-acc-business' },
     );
 
     const tx = (
+      id: string,
       d: number,
       description: string,
       amountCents: number,
@@ -91,22 +93,29 @@ export async function loadDemoData(
       createTransaction(
         store,
         { accountId, date: day(d), description, amountCents, type, categoryId },
-        opts,
+        { ...opts, id: `demo-txn-${id}` },
       );
 
-    await tx(1, 'Salary – Demo Employer', 1_200_000, 'income', 'cat-salary');
-    await tx(1, 'Church tithe', 120_000, 'expense', 'cat-tithe');
-    await tx(2, 'Rent', 450_000, 'expense', 'cat-housing');
-    await tx(3, 'Checkers groceries', 85_000, 'expense', 'cat-groceries');
-    await tx(4, 'Prepaid electricity', 60_000, 'expense', 'cat-utilities');
-    await tx(5, 'Nando’s', 18_500, 'expense', 'cat-eating-out');
-    await tx(6, 'Uber', 9_500, 'expense', 'cat-transport');
-    await tx(7, 'Checkers refund', 4_000, 'refund', 'cat-groceries');
-    await tx(8, 'Unknown card purchase', 12_000, 'expense', null);
+    await tx('salary', 1, 'Salary – Demo Employer', 1_200_000, 'income', 'cat-salary');
+    await tx('tithe', 1, 'Church tithe', 120_000, 'expense', 'cat-tithe');
+    await tx('rent', 2, 'Rent', 450_000, 'expense', 'cat-housing');
+    await tx('groceries', 3, 'Checkers groceries', 85_000, 'expense', 'cat-groceries');
+    await tx('electricity', 4, 'Prepaid electricity', 60_000, 'expense', 'cat-utilities');
+    await tx('nandos', 5, 'Nando’s', 18_500, 'expense', 'cat-eating-out');
+    await tx('uber', 6, 'Uber', 9_500, 'expense', 'cat-transport');
+    await tx('refund', 7, 'Checkers refund', 4_000, 'refund', 'cat-groceries');
+    await tx('unknown', 8, 'Unknown card purchase', 12_000, 'expense', null);
     const [, savingsLeg] = await createTransfer(
       store,
       { fromAccountId: main.id, toAccountId: savings.id, date: day(2), amountCents: 100_000 },
-      opts,
+      {
+        ...opts,
+        ids: {
+          transfer: 'demo-tr-savings',
+          out: 'demo-txn-to-savings',
+          into: 'demo-txn-from-main',
+        },
+      },
     );
     await createTransfer(
       store,
@@ -117,14 +126,26 @@ export async function loadDemoData(
         amountCents: 50_000,
         description: 'Owner contribution',
       },
-      opts,
+      {
+        ...opts,
+        ids: { transfer: 'demo-tr-owner', out: 'demo-txn-owner-out', into: 'demo-txn-owner-in' },
+      },
     );
-    await tx(4, 'Client payment – logo design', 250_000, 'income', 'cat-biz-revenue', business.id);
-    await tx(5, 'Canva subscription', 22_000, 'expense', 'cat-biz-software', business.id);
+    await tx(
+      'client-payment',
+      4,
+      'Client payment – logo design',
+      250_000,
+      'income',
+      'cat-biz-revenue',
+      business.id,
+    );
+    await tx('canva', 5, 'Canva subscription', 22_000, 'expense', 'cat-biz-software', business.id);
 
     await saveRecurringRule(
       store,
       {
+        id: 'demo-rule-phone',
         name: 'Phone contract',
         direction: 'expense',
         amountCents: 39_900,
@@ -142,6 +163,7 @@ export async function loadDemoData(
     await saveRecurringRule(
       store,
       {
+        id: 'demo-rule-insurance',
         name: 'Car insurance',
         direction: 'expense',
         amountCents: 75_000,
@@ -160,6 +182,7 @@ export async function loadDemoData(
     const emergency = await saveGoal(
       store,
       {
+        id: 'demo-goal-emergency',
         name: 'Demo · Emergency fund',
         goalType: 'emergency_fund',
         workspace: 'personal',
@@ -181,7 +204,7 @@ export async function loadDemoData(
         amountCents: 800_000,
         note: 'Opening savings balance',
       },
-      opts,
+      { ...opts, id: 'demo-gc-emergency-opening' },
     );
     await addGoalContribution(
       store,
@@ -192,11 +215,12 @@ export async function loadDemoData(
         transactionId: savingsLeg.id,
         note: 'Monthly transfer to savings',
       },
-      opts,
+      { ...opts, id: 'demo-gc-emergency-transfer' },
     );
     const buffer = await saveGoal(
       store,
       {
+        id: 'demo-goal-buffer',
         name: 'Demo · Monthly buffer',
         goalType: 'monthly_buffer',
         workspace: 'personal',
@@ -211,7 +235,7 @@ export async function loadDemoData(
     await addGoalContribution(
       store,
       { goalId: buffer.id, date: day(2), amountCents: 50_000 },
-      opts,
+      { ...opts, id: 'demo-gc-buffer' },
     );
 
     const now = clock.now();

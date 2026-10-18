@@ -17,6 +17,7 @@ import {
   transferKindFor,
   updateTransaction,
   updateTransfer,
+  convertToTransfer,
 } from '@/services/transactionsService';
 import { Alert, Field } from '@/components/ui';
 import { AccountOptions, CategoryOptions } from '../shared';
@@ -366,5 +367,77 @@ export function TransferForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Turns an existing income/expense into a transfer between your own accounts (e.g. a statement
+ * row "TRANSFER TO SAVINGS" that was imported as spending). Links to the matching entry in the
+ * other account when there is one.
+ */
+export function ConvertToTransferPanel({
+  txn,
+  accounts,
+  onDone,
+}: {
+  txn: Transaction;
+  accounts: Account[];
+  onDone: (msg: string) => void;
+}) {
+  const { store } = useApp();
+  const others = accounts.filter((a) => a.active && a.id !== txn.accountId);
+  const [otherId, setOtherId] = useState('');
+  const [recordOtherSide, setRecordOtherSide] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  if (others.length === 0 || txn.type === 'adjustment') return null;
+  const outgoing = txn.amountCents < 0;
+
+  async function convert() {
+    setError(null);
+    try {
+      const outcome = await convertToTransfer(store, txn.id, otherId, { recordOtherSide });
+      const name = others.find((a) => a.id === otherId)?.name ?? 'the other account';
+      onDone(
+        outcome === 'paired' || outcome === 'joined'
+          ? `Converted to a transfer and linked to the matching entry in ${name}`
+          : outcome === 'both_sides'
+            ? `Converted to a transfer; the other side was recorded in ${name}`
+            : 'Converted to a transfer',
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <section className="panel form" aria-label="Convert to transfer">
+      <h3 className="small">Is this a transfer between your own accounts?</h3>
+      <p className="small muted">
+        Transfers aren’t income or spending. If the other account already has the matching amount
+        within 3 days, the two are linked; otherwise this becomes one side of a transfer.
+      </p>
+      {error && <Alert tone="negative">{error}</Alert>}
+      <div className="form-row">
+        <Field label={outgoing ? 'Transfer to' : 'Transfer from'} htmlFor="conv-account">
+          <select id="conv-account" value={otherId} onChange={(e) => setOtherId(e.target.value)}>
+            <option value="">Choose…</option>
+            <AccountOptions accounts={others} />
+          </select>
+        </Field>
+      </div>
+      <label className="check small">
+        <input
+          type="checkbox"
+          checked={recordOtherSide}
+          onChange={(e) => setRecordOtherSide(e.target.checked)}
+        />
+        If there’s no matching entry, record the other side in that account too
+      </label>
+      <div className="btn-row">
+        <button type="button" className="btn" disabled={!otherId} onClick={() => void convert()}>
+          Convert to transfer
+        </button>
+      </div>
+    </section>
   );
 }

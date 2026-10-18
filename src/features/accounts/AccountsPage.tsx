@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useState, type FormEvent } from 'react';
 import { useApp, useFinanceData } from '@/app/AppContext';
 import {
@@ -29,6 +30,7 @@ import {
   Money,
   useStatus,
 } from '@/components/ui';
+import { PageHeader } from '@/components/PageHeader';
 
 interface FormState {
   name: string;
@@ -282,6 +284,7 @@ export function AccountsPage() {
   const { store, today } = useApp();
   const data = useFinanceData();
   const { run, statusNode, setStatus } = useStatus();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<Account | 'new' | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
@@ -294,12 +297,16 @@ export function AccountsPage() {
 
   return (
     <>
-      <div className="topbar">
-        <h1>Accounts</h1>
-        <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>
-          Add account
-        </button>
-      </div>
+      <PageHeader
+        title="Accounts"
+        actions={
+          <>
+            <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>
+              Add account
+            </button>
+          </>
+        }
+      />
 
       <Alert tone="info">
         Balances are <strong>calculated</strong> from the opening balance plus transactions recorded
@@ -404,10 +411,14 @@ export function AccountsPage() {
                       <button
                         type="button"
                         className="btn btn-sm btn-danger"
-                        onClick={() => {
-                          if (window.confirm(`Delete "${a.name}" permanently?`)) {
-                            void run(() => deleteAccount(store, a.id), 'Account deleted');
-                          }
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: `Delete ${a.name}?`,
+                            message: 'The account has no transactions. This cannot be undone.',
+                            confirmLabel: 'Delete account',
+                            danger: true,
+                          });
+                          if (ok) void run(() => deleteAccount(store, a.id), 'Account deleted');
                         }}
                       >
                         Delete

@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useApp, useFinanceData } from '@/app/AppContext';
 import {
   TRANSACTION_SOURCES,
@@ -29,20 +30,32 @@ import {
   WorkspaceSwitcher,
   useStatus,
 } from '@/components/ui';
+import { PageHeader } from '@/components/PageHeader';
 import { AccountOptions, CategoryOptions, lookup } from '../shared';
-import { TransactionForm, TransferForm } from './TransactionForms';
+import { ConvertToTransferPanel, TransactionForm, TransferForm } from './TransactionForms';
+import { unlinkPayment } from '@/services/planningService';
 
 type Sort = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
 type Panel = { kind: 'new' } | { kind: 'transfer' } | { kind: 'edit'; txn: Transaction } | null;
 
 const PAGE_SIZE = 100;
 
+function panelFromParam(value: string | null): Panel {
+  return value === '1' ? { kind: 'new' } : value === 'transfer' ? { kind: 'transfer' } : null;
+}
+
 export function TransactionsPage() {
   const { store, view, setView, today } = useApp();
   const data = useFinanceData();
   const { run, statusNode, setStatus } = useStatus();
+  const confirm = useConfirm();
   const [params] = useSearchParams();
-  const [panel, setPanel] = useState<Panel>(params.get('new') === '1' ? { kind: 'new' } : null);
+  const [panel, setPanel] = useState<Panel>(panelFromParam(params.get('new')));
+  // The Add sheet can open a form while this page is already showing.
+  const newParam = params.get('new');
+  useEffect(() => {
+    if (newParam) setPanel(panelFromParam(newParam));
+  }, [newParam]);
   const [search, setSearch] = useState('');
   const [accountId, setAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -124,15 +137,47 @@ export function TransactionsPage() {
   function editPanel(txn: Transaction) {
     if (txn.type !== 'transfer' || !txn.transferId) {
       return (
-        <TransactionForm
-          key={txn.id}
-          accounts={data!.accounts}
-          categories={data!.categories}
-          editing={txn}
-          today={today}
-          onDone={done}
-          onCancel={() => setPanel(null)}
-        />
+        <>
+          <TransactionForm
+            key={txn.id}
+            accounts={data!.accounts}
+            categories={data!.categories}
+            editing={txn}
+            today={today}
+            onDone={done}
+            onCancel={() => setPanel(null)}
+          />
+          <ConvertToTransferPanel
+            key={`conv-${txn.id}`}
+            txn={txn}
+            accounts={data!.accounts}
+            onDone={done}
+          />
+          {txn.recurringRuleId && txn.recurringOccurrenceDate && (
+            <p className="small row-between">
+              <span>
+                Counts as{' '}
+                <strong>
+                  {data!.recurringRules.find((r) => r.id === txn.recurringRuleId)?.name ??
+                    'a recurring item'}
+                </strong>{' '}
+                due <DateText date={txn.recurringOccurrenceDate} />, so it isn't deducted twice.
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() =>
+                  void run(async () => {
+                    await unlinkPayment(store, txn.id);
+                    done('Link removed; the recurring item is matched automatically again.');
+                  })
+                }
+              >
+                Unlink
+              </button>
+            </p>
+          )}
+        </>
       );
     }
     const legs = data!.transactions.filter((t) => t.transferId === txn.transferId);
@@ -161,10 +206,11 @@ export function TransactionsPage() {
 
   return (
     <>
-      <div className="topbar">
-        <h1>Transactions</h1>
-        <WorkspaceSwitcher value={view} onChange={setView} />
-      </div>
+      <PageHeader
+        title="Activity"
+        subtitle="All your transactions, newest first"
+        actions={<WorkspaceSwitcher value={view} onChange={setView} />}
+      />
 
       <div className="toolbar">
         <div className="btn-row">
@@ -356,7 +402,7 @@ export function TransactionsPage() {
                 disabled={!bulkCategory}
                 onClick={() =>
                   void run(async () => {
-                    const n = await bulkSetCategory(
+                    const { updated, skipped } = await bulkSetCategory(
                       store,
                       [...selected],
                       bulkCategory === '__none' ? null : bulkCategory,
@@ -364,8 +410,12 @@ export function TransactionsPage() {
                     setSelected(new Set());
                     setBulkCategory('');
                     setStatus({
-                      tone: 'success',
-                      text: `Updated ${n} transaction${n === 1 ? '' : 's'}`,
+                      tone: skipped > 0 ? 'info' : 'success',
+                      text:
+                        `Updated ${updated} transaction${updated === 1 ? '' : 's'}` +
+                        (skipped > 0
+                          ? `. ${skipped} skipped: that category doesn’t fit them (e.g. income needs an income category).`
+                          : ''),
                     });
                   })
                 }
@@ -471,12 +521,18 @@ export function TransactionsPage() {
                             type="button"
                             className="btn btn-sm btn-danger"
                             aria-label={`Delete ${t.description}`}
-                            onClick={() => {
-                              const msg =
-                                t.type === 'transfer'
-                                  ? 'Delete both sides of this transfer permanently?'
-                                  : `Delete "${t.description}" permanently?`;
-                              if (window.confirm(msg)) {
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title:
+                                  t.type === 'transfer'
+                                    ? 'Delete both sides of this transfer?'
+                                    : `Delete “${t.description}”?`,
+                                message:
+                                  'This cannot be undone. Archive it instead to keep a record.',
+                                confirmLabel: 'Delete',
+                                danger: true,
+                              });
+                              if (ok) {
                                 void run(
                                   () => deleteTransactionPermanently(store, t.id),
                                   'Deleted',

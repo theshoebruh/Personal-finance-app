@@ -1,6 +1,8 @@
-import type { Account, Transaction } from '../models';
+import { isStrongTransfer, suggestTransfers } from './transfers';
+import type { Account, CategorisationRule, Category, Transaction } from '../models';
+import { learnedCategories, suggestCategory } from './categorise';
 import { normaliseText } from '../calculations/recurring';
-import { type ColumnMapping, type DateFormat, normaliseRows } from './normalise';
+import { type ColumnMapping, type DateFormat, normaliseRows, splitFees } from './normalise';
 import { type BalanceCheck, type StagedRow, checkRunningBalance, stageRows } from './staging';
 
 export interface Staging {
@@ -29,6 +31,9 @@ function mappedColumns(m: ColumnMapping): number[] {
     m.amountMode === 'signed' ? m.amountColumn : null,
     m.amountMode === 'debit_credit' ? m.debitColumn : null,
     m.amountMode === 'debit_credit' ? m.creditColumn : null,
+    m.feeColumn ?? null,
+    m.categoryColumn ?? null,
+    m.parentCategoryColumn ?? null,
     m.referenceColumn,
     m.balanceColumn,
   ].filter((c): c is number => c !== null);
@@ -40,6 +45,16 @@ export function buildStaging(
   mapping: ColumnMapping,
   account: Account,
   existing: readonly Transaction[],
+  /**
+   * All your accounts and transactions, for transfer suggestions, plus your categories and rules
+   * for category suggestions (optional).
+   */
+  context?: {
+    accounts: readonly Account[];
+    transactions: readonly Transaction[];
+    categories?: readonly Category[];
+    rules?: readonly CategorisationRule[];
+  },
 ): Staging {
   const columnCount = Math.max(0, ...rows.map((r) => r.length));
   const mappingErrors: string[] = [];
@@ -70,10 +85,43 @@ export function buildStaging(
     };
   }
   const n = normaliseRows(rows, mapping);
+  // The balance check needs whole statement lines (amount + fee); staging needs the split rows.
+  const staged = stageRows(splitFees(n.rows), account.id, existing);
+  if (context) {
+    const suggestions = suggestTransfers(
+      staged.map((r) =>
+        r.status === 'new'
+          ? { date: r.date!, amountCents: r.amountCents!, description: r.description }
+          : null,
+      ),
+      account,
+      context.accounts,
+      context.transactions,
+    );
+    staged.forEach((r, i) => {
+      const s = suggestions[i] ?? null;
+      r.transferSuggestion = s;
+      r.transferAccountId = isStrongTransfer(s) ? s!.otherAccountId : null;
+    });
+    if (context.categories) {
+      const ctx = {
+        account,
+        categories: context.categories,
+        rules: context.rules ?? [],
+        learned: learnedCategories(context.transactions),
+      };
+      for (const r of staged) {
+        if (r.status === 'invalid') continue;
+        const s = suggestCategory({ ...r, amountCents: r.amountCents! }, ctx);
+        r.categoryId = s?.categoryId ?? null;
+        r.categorySource = s?.source ?? null;
+      }
+    }
+  }
   return {
     mapping,
     columnCount,
-    rows: stageRows(n.rows, account.id, existing),
+    rows: staged,
     dateFormatUsed: n.dateFormatUsed,
     dateFormatAmbiguous: n.dateFormatAmbiguous,
     balanceCheck: checkRunningBalance(n.rows),

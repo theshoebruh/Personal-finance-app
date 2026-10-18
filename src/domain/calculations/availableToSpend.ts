@@ -15,7 +15,13 @@ import { accountBalance, pendingTotal } from './balances';
 import { type DiscretionaryBudgetStatus, discretionaryBudgetStatus } from './budgets';
 import { type GoalReserves, goalReserves, savingsMadeInPeriod } from './goals';
 import { budgetableIncome, savingsTarget } from './income';
-import { type BudgetPeriod, type SpendingWindow, budgetPeriod, spendingWindow } from './period';
+import {
+  type BudgetPeriod,
+  type SpendingWindow,
+  budgetPeriod,
+  spendingWindow,
+  withReceivedPaydays,
+} from './period';
 import { type Occurrence, reconcileOccurrences } from './recurring';
 import { inView } from './reporting';
 
@@ -121,8 +127,10 @@ export function dailyAllowance(availableCents: Cents, daysRemaining: number): Ce
  */
 export function calculateAvailableToSpend(input: AvailableToSpendInput): AvailableToSpendResult {
   const { today, view, settings } = input;
-  const window = spendingWindow(today, settings);
-  const period = budgetPeriod(today, settings);
+  // Salary that arrived early or late moves the payday (and so the period) to the day it arrived.
+  const pay = withReceivedPaydays(today, settings, input.recurringRules, input.transactions);
+  const window = spendingWindow(today, pay);
+  const period = budgetPeriod(today, pay);
   const warnings: AvailableWarning[] = [];
 
   // 1. Eligible cash

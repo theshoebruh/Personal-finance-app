@@ -103,6 +103,18 @@ export function formatZAR(cents: Cents): string {
   return formatter.format(cents / 100);
 }
 
+const wholeFormatter = new Intl.NumberFormat(ZAR_LOCALE, {
+  style: 'currency',
+  currency: 'ZAR',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
+/** Format cents rounded to whole rand, for compact chart labels, e.g. "R 1 235". */
+export function formatZARWhole(cents: Cents): string {
+  return wholeFormatter.format(Math.round(cents / 100));
+}
+
 /** Plain decimal string for inputs/exports, e.g. 123456 -> "1234.56". */
 export function centsToDecimalString(cents: Cents): string {
   const sign = cents < 0 ? '-' : '';

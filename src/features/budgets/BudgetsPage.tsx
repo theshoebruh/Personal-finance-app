@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useApp, useFinanceData, type FinanceData } from '@/app/AppContext';
 import {
   CATEGORY_GROUP_LABELS,
@@ -11,7 +12,7 @@ import {
   type Workspace,
 } from '@/domain/models';
 import { benchmark503020, budgetableIncome, savingsTarget } from '@/domain/calculations/income';
-import { budgetPeriod } from '@/domain/calculations/period';
+import { budgetPeriod, withReceivedPaydays } from '@/domain/calculations/period';
 import { spendingByCategory, inView } from '@/domain/calculations/reporting';
 import { estimateEssentialMonthly } from '@/domain/calculations/goals';
 import { monthlyEquivalent, nextDueDate } from '@/domain/calculations/recurring';
@@ -36,6 +37,7 @@ import {
   WorkspaceSwitcher,
   useStatus,
 } from '@/components/ui';
+import { PageHeader } from '@/components/PageHeader';
 import { AccountOptions, CategoryOptions, lookup } from '../shared';
 
 function IncomePlanCard({ data }: { data: FinanceData }) {
@@ -157,7 +159,10 @@ function IncomePlanCard({ data }: { data: FinanceData }) {
 function CategoryLimits({ data, workspace }: { data: FinanceData; workspace: Workspace }) {
   const { store, today } = useApp();
   const { run, statusNode } = useStatus();
-  const period = budgetPeriod(today, data.settings);
+  const period = budgetPeriod(
+    today,
+    withReceivedPaydays(today, data.settings, data.recurringRules, data.transactions),
+  );
   const spent = spendingByCategory(data.transactions, workspace, period.start, period.end);
   const budgetsByCat = new Map(
     data.budgets.filter((b) => b.workspace === workspace && b.active).map((b) => [b.categoryId, b]),
@@ -528,6 +533,7 @@ function RecurringForm({
 function RecurringItems({ data }: { data: FinanceData }) {
   const { store, today, view } = useApp();
   const { run, statusNode, setStatus } = useStatus();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<RecurringRule | 'new' | null>(null);
   const [salaryAccount, setSalaryAccount] = useState('');
   const categories = lookup(data.categories);
@@ -672,14 +678,14 @@ function RecurringItems({ data }: { data: FinanceData }) {
                   <button
                     type="button"
                     className="btn btn-sm btn-danger"
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Delete recurring item "${r.name}"? Recorded transactions are not affected.`,
-                        )
-                      ) {
-                        void run(() => deleteRecurringRule(store, r.id), 'Deleted');
-                      }
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: `Delete “${r.name}”?`,
+                        message: 'Recorded transactions are not affected.',
+                        confirmLabel: 'Delete',
+                        danger: true,
+                      });
+                      if (ok) void run(() => deleteRecurringRule(store, r.id), 'Deleted');
                     }}
                   >
                     Delete
@@ -701,10 +707,14 @@ export function BudgetsPage() {
   if (!data) return <Loading />;
   return (
     <>
-      <div className="topbar">
-        <h1>Budgets</h1>
-        <WorkspaceSwitcher value={view} onChange={setView} />
-      </div>
+      <PageHeader
+        title="Budgets"
+        actions={
+          <>
+            <WorkspaceSwitcher value={view} onChange={setView} />
+          </>
+        }
+      />
       <div className="grid grid-2">
         {view !== 'business' && <IncomePlanCard data={data} />}
         <RecurringItems data={data} />

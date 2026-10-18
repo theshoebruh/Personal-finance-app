@@ -3,6 +3,7 @@ import { summariseIncomeExpenses } from '@/domain/calculations/reporting';
 import { accountBalance } from '@/domain/calculations/balances';
 import { endOfMonth, formatDisplayDate, startOfMonth } from '@/domain/dates';
 import { Alert, Card, Empty, Loading, Money } from '@/components/ui';
+import { PageHeader } from '@/components/PageHeader';
 
 export function BusinessPage() {
   const { today } = useApp();
@@ -15,9 +16,7 @@ export function BusinessPage() {
 
   return (
     <>
-      <div className="topbar">
-        <h1>Business</h1>
-      </div>
+      <PageHeader title="Business" />
       {accounts.length === 0 ? (
         <Card>
           <Empty title="No business accounts yet">

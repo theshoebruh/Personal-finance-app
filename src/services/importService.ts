@@ -6,6 +6,7 @@ import {
   type ParsedCsv,
   type Staging,
   type StagedRow,
+  categoryFits,
   MAX_FILE_BYTES,
   buildStaging,
   guessMapping,
@@ -15,6 +16,13 @@ import {
 import type { FinanceStore } from '@/data/repositories/types';
 import { type Clock, DomainError, newId, systemClock } from './common';
 import { updateAccount } from './accountsService';
+import {
+  asTransferLeg,
+  convertedByTag,
+  kindForLegs,
+  otherSideLeg,
+  revertTransferLeg,
+} from './transactionsService';
 
 export interface PreparedImport {
   account: Account;
@@ -52,6 +60,16 @@ export function checkImportFile(file: { name: string; size: number }): void {
   }
 }
 
+/** Everything staging uses to suggest transfers and categories. */
+async function stagingContext(store: FinanceStore) {
+  return {
+    accounts: await store.accounts.list(),
+    transactions: await store.transactions.list(),
+    categories: await store.categories.list(),
+    rules: await store.categorisationRules.list(),
+  };
+}
+
 /**
  * Parse a statement into a staging area. Nothing is written. Uses the account's saved column
  * mapping when the header row matches, otherwise a best-effort guess the user then confirms.
@@ -75,16 +93,26 @@ export async function prepareImport(
   ) {
     mapping = profile.mapping;
     source = 'saved';
+    // Mappings saved before fee and bank-category columns were supported don't mention them; pick
+    // them up from the header so nothing is silently left out. An explicit "not used" (null) is
+    // respected.
+    if (mapping.hasHeader) {
+      const guess = guessMapping(parsed.rows);
+      for (const key of ['feeColumn', 'categoryColumn', 'parentCategoryColumn'] as const) {
+        if (mapping[key] === undefined) mapping = { ...mapping, [key]: guess[key] ?? null };
+      }
+    }
   } else {
     headerChanged = !!profile;
     mapping = guessMapping(parsed.rows);
   }
   const existing = await store.transactions.byAccount(account.id);
+  const context = await stagingContext(store);
   return {
     account,
     fileName: input.fileName,
     parsed,
-    staging: buildStaging(parsed.rows, mapping, account, existing),
+    staging: buildStaging(parsed.rows, mapping, account, existing, context),
     mappingSource: source,
     headerChanged,
   };
@@ -97,9 +125,10 @@ export async function restage(
   mapping: ColumnMapping,
 ): Promise<PreparedImport> {
   const existing = await store.transactions.byAccount(prepared.account.id);
+  const context = await stagingContext(store);
   return {
     ...prepared,
-    staging: buildStaging(prepared.parsed.rows, mapping, prepared.account, existing),
+    staging: buildStaging(prepared.parsed.rows, mapping, prepared.account, existing, context),
   };
 }
 
@@ -110,11 +139,21 @@ export interface CommitInput {
   saveMapping: boolean;
   /** Record the statement's closing balance as the account's reconciliation check. */
   closingBalance?: { date: IsoDate; balanceCents: Cents } | undefined;
+  /**
+   * For transfer rows with no matching entry in the other account yet, also create the other side
+   * there (default true), so both balances are right even if that account's statement is never
+   * imported. A later statement row for it is flagged as a possible duplicate.
+   */
+  recordOtherSide?: boolean;
 }
 
 export interface CommitResult {
   batch: ImportBatch;
   created: number;
+  /** Transactions that got a category on import (the rest are left for review). */
+  categorised: number;
+  /** Rows imported as transfers between your own accounts. */
+  transfers: number;
 }
 
 /**
@@ -136,8 +175,14 @@ export async function commitImport(
   const now = clock.now();
   const batchId = newId();
   const dates = selected.map((r) => r.date!).sort();
+  const categories = new Map((await store.categories.list()).map((c) => [c.id, c]));
+  /** The row's suggested or chosen category, if it (still) fits this account and amount. */
+  const categoryFor = (r: StagedRow) =>
+    r.categoryId && categoryFits(categories.get(r.categoryId), account, r.amountCents!)
+      ? r.categoryId
+      : null;
 
-  const transactions: Transaction[] = selected.map((r) => ({
+  const base: Transaction[] = selected.map((r) => ({
     id: newId(),
     accountId: account.id,
     date: r.date!,
@@ -145,9 +190,10 @@ export async function commitImport(
     originalDescription: r.raw.join(' | ').slice(0, 500),
     amountCents: r.amountCents!,
     type: r.amountCents! > 0 ? 'income' : 'expense',
-    categoryId: null,
+    categoryId: categoryFor(r),
     workspace: account.workspace,
-    status: 'needs_review',
+    // Categorised rows are done; the rest wait in "Needs review" for a category.
+    status: categoryFor(r) ? 'posted' : 'needs_review',
     source: 'csv',
     importBatchId: batchId,
     fingerprint: r.fingerprint!,
@@ -159,6 +205,62 @@ export async function commitImport(
     createdAt: now,
     updatedAt: now,
   }));
+
+  // Transfers between your own accounts: link to the other side instead of income/expense.
+  const accounts = new Map((await store.accounts.list()).map((a) => [a.id, a]));
+  const tag = convertedByTag(batchId);
+  const transactions: Transaction[] = [];
+  const extraWrites: Transaction[] = [];
+  let transferCount = 0;
+  for (const [i, r] of selected.entries()) {
+    const txn = base[i]!;
+    const other = r.transferAccountId ? accounts.get(r.transferAccountId) : undefined;
+    if (!other || other.id === account.id) {
+      transactions.push(txn);
+      continue;
+    }
+    transferCount++;
+    const kind = kindForLegs(
+      { account, amountCents: txn.amountCents },
+      { account: other, amountCents: -txn.amountCents },
+    );
+    const s = r.transferSuggestion;
+    const counterpart =
+      s?.counterpart && s.otherAccountId === other.id
+        ? await store.transactions.get(s.counterpart.transactionId)
+        : undefined;
+    const stillValid =
+      counterpart && !counterpart.archived && counterpart.amountCents === -txn.amountCents;
+    if (stillValid && counterpart.type === 'transfer' && counterpart.transferId) {
+      // The other side was imported first as a single leg: complete the pair.
+      transactions.push(
+        asTransferLeg(txn, counterpart.transferId, counterpart.transferKind ?? kind, now),
+      );
+    } else if (stillValid && counterpart.type !== 'transfer') {
+      // An ordinary income/expense in the other account becomes the other leg (undo reverts it).
+      const transferId = newId();
+      transactions.push(asTransferLeg(txn, transferId, kind, now));
+      extraWrites.push(asTransferLeg(counterpart, transferId, kind, now, tag));
+    } else {
+      const leg = asTransferLeg(txn, newId(), kind, now);
+      transactions.push(leg);
+      if (input.recordOtherSide ?? true) {
+        extraWrites.push(
+          otherSideLeg({
+            leg,
+            otherAccount: other,
+            thisAccount: account,
+            now,
+            importBatchId: batchId,
+            note: `Recorded from the import of ${prepared.fileName ?? 'a statement'} into ${account.name}`.slice(
+              0,
+              1000,
+            ),
+          }),
+        );
+      }
+    }
+  }
 
   const batch: ImportBatch = {
     id: batchId,
@@ -179,7 +281,7 @@ export async function commitImport(
 
   await store.atomic(async () => {
     await store.importBatches.put(batch);
-    await store.transactions.bulkPut(transactions);
+    await store.transactions.bulkPut([...transactions, ...extraWrites]);
     if (input.saveMapping) {
       const existing = await store.importProfiles.get(account.id);
       await store.importProfiles.put({
@@ -204,7 +306,12 @@ export async function commitImport(
       );
     }
   });
-  return { batch, created: transactions.length };
+  return {
+    batch,
+    created: transactions.length,
+    categorised: transactions.filter((t) => t.type !== 'transfer' && t.categoryId).length,
+    transfers: transferCount,
+  };
 }
 
 /**
@@ -235,6 +342,13 @@ export async function undoImport(
     await store.transactions.bulkDelete([...ids]);
     removed = ids.size;
     const now = clock.now();
+    // Transactions this import turned into transfer legs go back to ordinary income/expense
+    // (uncategorised, marked for review).
+    const tag = convertedByTag(batchId);
+    const converted = (await store.transactions.list()).filter((t) => t.tags.includes(tag));
+    if (converted.length > 0) {
+      await store.transactions.bulkPut(converted.map((t) => revertTransferLeg(t, now, tag)));
+    }
     await store.importBatches.put({ ...batch, status: 'undone', undoneAt: now, updatedAt: now });
   });
   return removed;

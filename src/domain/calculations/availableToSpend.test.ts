@@ -215,4 +215,29 @@ describe('available to spend', () => {
     expect(r.eligibleCash.totalCents).toBe(1_000_000);
     expect(r.eligibleCash.pendingCents).toBe(-100_000);
   });
+
+  it('starts a new window and period when salary arrives before the scheduled payday', () => {
+    const salary = makeTxn({
+      accountId: main.id,
+      type: 'income',
+      amountCents: 1_200_000,
+      date: '2026-03-23',
+      categoryId: 'cat-salary',
+    });
+    const r = calculateAvailableToSpend(
+      input({
+        today: '2026-03-23',
+        transactions: [salary],
+        settings: makeSettings({
+          paydayDayOfMonth: 25,
+          reservePlannedSavings: false,
+          budgetPeriodMode: 'pay_period',
+        }),
+      }),
+    );
+    expect(r.period).toEqual({ start: '2026-03-23', end: '2026-04-24', mode: 'pay_period' });
+    expect(r.window.nextPayday).toBe('2026-04-25');
+    expect(r.window.daysRemaining).toBe(33);
+    expect(r.dailyAllowanceCents).toBe(Math.floor(2_200_000 / 33));
+  });
 });
