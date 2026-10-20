@@ -276,6 +276,16 @@ export function ProgressBar({ value, max, label }: { value: number; max: number;
   );
 }
 
+/** Read a picked file's raw bytes, e.g. an Excel workbook (FileReader works in older Safari). */
+export function readFileBytes(file: Blob): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = () => reject(new Error('The file could not be read.'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 /** Read a picked file as UTF-8 text (FileReader works in older Safari and in tests). */
 export function readFileText(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {

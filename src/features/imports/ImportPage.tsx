@@ -11,6 +11,7 @@ import {
   type DateFormat,
   type StagedRow,
   summariseStaging,
+  isWorkbookFileName,
 } from '@/domain/imports';
 import { formatDisplayDate } from '@/domain/dates';
 import {
@@ -39,6 +40,7 @@ import {
   Field,
   Loading,
   Money,
+  readFileBytes,
   readFileText,
   useStatus,
 } from '@/components/ui';
@@ -47,6 +49,8 @@ import { Icon } from '@/components/icons';
 import { Ring } from '@/components/charts';
 import { CategoryOptions } from '../shared';
 import type { CategorySource } from '@/domain/imports';
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 const CATEGORY_SOURCE_TEXT: Record<Exclude<CategorySource, 'you'>, string> = {
   rule: 'Your rule',
@@ -268,13 +272,13 @@ function CsvHelp({ defaultOpen }: { defaultOpen: boolean }) {
           folder such as <strong>Downloads</strong>.
         </li>
         <li>
-          Come back here and tap <strong>Choose your CSV file</strong>. In the Files app, look under{' '}
-          <strong>Recents</strong> or <strong>Browse → Downloads</strong>.
+          Come back here and tap <strong>Choose your CSV or Excel file</strong>. In the Files app,
+          look under <strong>Recents</strong> or <strong>Browse → Downloads</strong>.
         </li>
       </ol>
       <p className="small muted">
-        Some banks only offer CSV on their website, not in the app. An Excel sheet works too if you
-        save it as “CSV UTF-8”. PDF statements can’t be read.
+        Some banks only offer CSV or Excel on their website, not in the app. Excel workbooks (.xlsx)
+        can be imported directly; only the first sheet is read. PDF statements can’t be read.
       </p>
     </details>
   );
@@ -317,8 +321,8 @@ function FileStep({
         ref={fileRef}
         className="file-input"
         type="file"
-        accept=".csv,.txt,text/csv,text/plain"
-        aria-label="Statement file (.csv)"
+        accept={`.csv,.txt,.xlsx,.xlsm,text/csv,text/plain,${XLSX_TYPE}`}
+        aria-label="Statement file (CSV or Excel)"
         aria-describedby={error ? 'imp-file-error' : 'imp-file-hint'}
         disabled={busy}
         onChange={(e) => {
@@ -331,7 +335,7 @@ function FileStep({
         <span className="drop-icon">
           <Icon name="file" size={28} />
         </span>
-        <strong>{busy ? 'Reading your file…' : 'Choose your CSV file'}</strong>
+        <strong>{busy ? 'Reading your file…' : 'Choose your CSV or Excel file'}</strong>
         <span id="imp-file-hint" className="small muted">
           Opens the Files app. The file is read on this device and never uploaded.
         </span>
@@ -571,6 +575,7 @@ function ColumnsStep({
           guessed again. Please check them.
         </Alert>
       )}
+      {prepared.parsed.note && <p className="small muted">{prepared.parsed.note}</p>}
       {prepared.parsed.warnings.length > 0 && (
         <Alert tone="warning">
           The file had formatting problems: {prepared.parsed.warnings.join('; ')}. Affected rows may
@@ -1297,7 +1302,9 @@ export function ImportPage() {
       }
       const p = await prepareImport(store, {
         accountId,
-        text: await readFileText(file),
+        ...(isWorkbookFileName(file.name) || file.type === XLSX_TYPE
+          ? { workbook: await readFileBytes(file) }
+          : { text: await readFileText(file) }),
         fileName: file.name,
       });
       setPrepared(p);
@@ -1329,7 +1336,7 @@ export function ImportPage() {
     <>
       <PageHeader
         title="Import statement"
-        subtitle={step === 'account' ? 'Bring in transactions from a CSV file' : undefined}
+        subtitle={step === 'account' ? 'Bring in transactions from a CSV or Excel file' : undefined}
         back={back ? { onClick: () => goTo(back), label: 'Back' } : undefined}
         actions={
           step !== 'account' && step !== 'done' ? (

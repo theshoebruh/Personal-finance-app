@@ -12,6 +12,7 @@ import {
   guessMapping,
   headerSignature,
   parseCsv,
+  parseXlsx,
 } from '@/domain/imports';
 import type { FinanceStore } from '@/data/repositories/types';
 import { type Clock, DomainError, newId, systemClock } from './common';
@@ -48,14 +49,14 @@ export function checkImportFile(file: { name: string; size: number }): void {
   if (file.size > MAX_FILE_BYTES) {
     throw new DomainError('That file is larger than 5 MB. Export a shorter date range.');
   }
-  if (/\.(xlsx|xls|xlsm|ods)$/i.test(file.name)) {
+  if (/\.(xls|ods|numbers)$/i.test(file.name)) {
     throw new DomainError(
-      'Excel workbooks can’t be read directly yet. In Excel, use File → Save As → “CSV UTF-8”, then import that file.',
+      'That spreadsheet format can’t be read. Save it as an Excel workbook (.xlsx) or as “CSV UTF-8”, then import that file.',
     );
   }
   if (/\.pdf$/i.test(file.name)) {
     throw new DomainError(
-      'PDF statements aren’t supported yet. Download your statement as CSV instead.',
+      'PDF statements aren’t supported yet. Download your statement as CSV or Excel instead.',
     );
   }
 }
@@ -76,10 +77,11 @@ async function stagingContext(store: FinanceStore) {
  */
 export async function prepareImport(
   store: FinanceStore,
-  input: { accountId: string; text: string; fileName?: string },
+  input: { accountId: string; text?: string; workbook?: Uint8Array; fileName?: string },
 ): Promise<PreparedImport> {
   const account = await requireActiveAccount(store, input.accountId);
-  const parsed = parseCsv(input.text);
+  // An Excel workbook is read into the same rows as a CSV; everything after this is shared.
+  const parsed = input.workbook ? parseXlsx(input.workbook) : parseCsv(input.text ?? '');
   const profile = await store.importProfiles.get(account.id);
   const signature = headerSignature(parsed.rows);
   let mapping: ColumnMapping;
