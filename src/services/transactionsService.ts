@@ -69,7 +69,7 @@ async function checkCategory(
   const cat = await store.categories.get(categoryId);
   if (!cat) throw new DomainError('Category not found');
   if (cat.workspace !== 'both' && cat.workspace !== account.workspace) {
-    throw new DomainError(`"${cat.name}" is not a ${account.workspace} category`);
+    throw new DomainError(`“${cat.name}” is only for ${cat.workspace} accounts`);
   }
   const kind = categoryKindFor(type);
   if (kind === null) {
@@ -78,8 +78,8 @@ async function checkCategory(
   if (cat.kind !== kind) {
     throw new DomainError(
       kind === 'income'
-        ? `"${cat.name}" is a spending category; choose an income category for income`
-        : `"${cat.name}" is an income category; choose a spending category`,
+        ? `“${cat.name}” is a spending category; choose an income category for income`
+        : `“${cat.name}” is an income category; choose a spending category`,
     );
   }
 }
@@ -319,10 +319,11 @@ export async function bulkSetCategory(
   ids: readonly string[],
   categoryId: string | null,
   clock: Clock = systemClock,
-): Promise<{ updated: number; skipped: number }> {
+): Promise<{ updated: number; skipped: number; reasons: string[] }> {
   const now = clock.now();
   const updated: Transaction[] = [];
   let skipped = 0;
+  const reasons = new Set<string>();
   for (const id of ids) {
     const t = await store.transactions.get(id);
     if (!t) continue;
@@ -332,6 +333,7 @@ export async function bulkSetCategory(
     } catch (e) {
       if (!(e instanceof DomainError) || categoryId === null) throw e;
       skipped++;
+      reasons.add(e.message);
       continue;
     }
     if (t.type === 'transfer' || t.type === 'adjustment') {
@@ -346,7 +348,7 @@ export async function bulkSetCategory(
     });
   }
   await store.atomic(() => store.transactions.bulkPut(updated));
-  return { updated: updated.length, skipped };
+  return { updated: updated.length, skipped, reasons: [...reasons] };
 }
 
 // ---------------------------------------------------------------- converting to transfers
