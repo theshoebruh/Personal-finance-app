@@ -12,13 +12,10 @@ import { isActual } from '@/domain/calculations/balances';
 import { updateTransaction } from '@/services/transactionsService';
 import { Card, DateText, Empty, Loading, Money, useStatus } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
-import { Donut, Ring, fraction } from '@/components/charts';
+import { Donut, Ring, fraction, shadeOf } from '@/components/charts';
 import { CategoryOptions, lookup } from '../shared';
-import { BUCKET_HINT, useBuckets } from './useBuckets';
+import { BUCKET_COLOUR, BUCKET_HINT, useBuckets } from './useBuckets';
 import { LeftText, percentText, ringTone } from './HomePage';
-import type { ChartColour } from '@/components/charts';
-
-const CATEGORY_COLOURS: ChartColour[] = [1, 2, 3, 4, 5, 6];
 
 export function GroupPage() {
   const { bucket: param } = useParams();
@@ -116,11 +113,13 @@ export function GroupPage() {
           {line.categories.length > 0 && (
             <Card title="By category">
               <Donut
+                // Shades of the group's own colour, so the chart reads as this group.
                 segments={line.categories.map((c, i) => ({
                   key: c.categoryId,
                   label: c.name,
                   cents: c.cents,
-                  colour: CATEGORY_COLOURS[i % CATEGORY_COLOURS.length]!,
+                  colour: BUCKET_COLOUR[bucket],
+                  tint: shadeOf(BUCKET_COLOUR[bucket], i),
                 }))}
                 totalCents={line.categories.reduce((s, c) => s + c.cents, 0)}
                 label={`${name} by category`}

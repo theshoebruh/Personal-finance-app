@@ -137,6 +137,21 @@ export interface DonutSegment {
   label: string;
   cents: Cents;
   colour: ChartColour;
+  /** Optional CSS colour that overrides `colour`, e.g. a shade of it from `shadeOf`. */
+  tint?: string;
+}
+
+/**
+ * The i-th shade of a chart colour, for slices that all belong to one group: the first is the
+ * colour itself, then alternately lighter and darker, further each time, so neighbouring slices
+ * stay distinguishable while the whole chart reads as that group's colour.
+ */
+export function shadeOf(colour: ChartColour, i: number): string {
+  if (i === 0) return `var(--chart-${colour})`;
+  const step = Math.min(3, Math.ceil(i / 2));
+  const amount = [0, 28, 48, 62][step];
+  const towards = i % 2 === 1 ? 'white' : 'var(--color-bg)';
+  return `color-mix(in oklab, var(--chart-${colour}), ${towards} ${amount}%)`;
 }
 
 export function Donut({
@@ -175,7 +190,11 @@ export function Donut({
     <ul className="chart-legend">
       {segments.map((s) => (
         <li key={s.key}>
-          <span className={`swatch chart-${s.colour}`} aria-hidden="true" />
+          <span
+            className={`swatch chart-${s.colour}`}
+            style={s.tint ? { background: s.tint } : undefined}
+            aria-hidden="true"
+          />
           <span className="chart-legend-label">{s.label}</span>
           {showPercent && (
             <span className="chart-legend-pct">{percentLabel(s.cents, totalCents)}</span>
@@ -198,6 +217,7 @@ export function Donut({
                 <circle
                   key={a.key}
                   className={`donut-arc stroke-chart-${a.colour}`}
+                  style={a.tint ? { stroke: a.tint } : undefined}
                   cx={c}
                   cy={c}
                   r={r}
