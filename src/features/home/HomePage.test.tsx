@@ -9,6 +9,8 @@ import { todayInAppZone } from '@/domain/dates';
 import { createAccount } from '@/services/accountsService';
 import { ensureInitialised } from '@/services/settingsService';
 import { createTransaction } from '@/services/transactionsService';
+import type { BucketLine } from '@/domain/calculations/buckets';
+import { LeftText, isOver, ringTone } from './HomePage';
 
 let n = 0;
 let db: FinanceDb;
@@ -90,4 +92,45 @@ it('edits group goals on the Categories page', async () => {
   await user.type(wants, '10');
   await user.click(screen.getByRole('button', { name: 'Save goals' }));
   expect(await screen.findByText('Goals saved')).toBeInTheDocument();
+});
+
+describe('group status and colours', () => {
+  const line = (
+    bucket: BucketLine['bucket'],
+    actualCents: number,
+    targetCents: number,
+  ): BucketLine => ({
+    bucket,
+    actualCents,
+    targetCents,
+    targetPercent: 20,
+    actualPercent: null,
+    leftCents: bucket === 'buffer' ? actualCents - targetCents : targetCents - actualCents,
+    categories: [],
+  });
+  const status = (l: BucketLine) => render(<LeftText line={l} />).container.textContent;
+
+  it('always colours a ring with its group colour, whatever its status', () => {
+    expect(ringTone(line('needs', 9_000, 10_000))).toBe('chart-1');
+    expect(ringTone(line('wants', 20_000, 10_000))).toBe('chart-2');
+    expect(ringTone(line('savings', 9_700, 10_000))).toBe('chart-3');
+    expect(ringTone(line('rf', 100, 10_000))).toBe('chart-6');
+    expect(ringTone(line('buffer', -500, 10_000))).toBe('chart-5');
+  });
+
+  it('says over, almost or left for spending groups', () => {
+    expect(status(line('wants', 12_000, 10_000))).toMatch(/over/);
+    expect(status(line('needs', 9_000, 10_000))).toMatch(/Almost at goal · R\s?10,00 left/);
+    expect(status(line('rf', 1_000, 10_000))).toMatch(/^R\s?90,00 left$/);
+    expect(isOver(line('wants', 12_000, 10_000))).toBe(true);
+  });
+
+  it('counts Savings and Buffer up to their goal, never as over', () => {
+    expect(status(line('savings', 9_700, 10_000))).toMatch(/R\s?3,00 to go/);
+    expect(status(line('savings', 12_000, 10_000))).toBe('Goal reached ✓');
+    expect(isOver(line('savings', 12_000, 10_000))).toBe(false);
+    expect(status(line('buffer', 10_000, 10_000))).toBe('Goal reached ✓');
+    expect(status(line('buffer', -500, 10_000))).toMatch(/Spent R\s?5,00 more than income/);
+    expect(isOver(line('buffer', -500, 10_000))).toBe(true);
+  });
 });

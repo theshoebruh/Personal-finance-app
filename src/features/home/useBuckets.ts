@@ -8,11 +8,11 @@ import { daysInclusive } from '@/domain/dates';
 
 /** Fixed chart colour per group, so a group looks the same everywhere. */
 export const BUCKET_COLOUR: Record<Bucket | 'uncategorised', ChartColour> = {
-  needs: 1,
-  wants: 2,
-  savings: 3,
-  rf: 4,
-  buffer: 6,
+  needs: 1, // blue
+  wants: 2, // orange
+  savings: 3, // green
+  rf: 6, // purple (amber reads as a warning)
+  buffer: 5, // pink
   uncategorised: 0,
 };
 
