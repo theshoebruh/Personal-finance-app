@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
 import { BACK_LINKS } from '@/app/nav';
 import { Icon } from './icons';
@@ -18,10 +18,13 @@ export function PageHeader({
   subtitle?: ReactNode;
   actions?: ReactNode;
   /** Overrides the default back link for this route; `null` hides it. */
-  back?: { to: string; label: string } | { onClick: () => void; label: string } | null;
+  back?:
+    | { to: string; label: string; onLinkClick?: (e: MouseEvent<HTMLAnchorElement>) => void }
+    | { onClick: () => void; label: string }
+    | null;
 }) {
   const { pathname } = useLocation();
-  const backLink = back === undefined ? BACK_LINKS[pathname] : back;
+  const backLink: typeof back = back === undefined ? BACK_LINKS[pathname] : back;
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [compact, setCompact] = useState(false);
 
@@ -41,7 +44,7 @@ export function PageHeader({
         <div className="page-bar-side">
           {backLink &&
             ('to' in backLink ? (
-              <Link className="back-link" to={backLink.to}>
+              <Link className="back-link" to={backLink.to} onClick={backLink.onLinkClick}>
                 <Icon name="chevron-left" size={20} />
                 {backLink.label}
               </Link>

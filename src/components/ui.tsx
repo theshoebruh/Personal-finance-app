@@ -42,6 +42,49 @@ export function Money({
   );
 }
 
+/** Figures that have already counted up this session (they only do it the first time). */
+const counted = new Set<string>();
+
+function shouldCountUp(key: string): boolean {
+  return (
+    !counted.has(key) &&
+    typeof window.matchMedia === 'function' &&
+    typeof window.requestAnimationFrame === 'function' &&
+    !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+/**
+ * A headline amount that counts up from zero the first time it's shown (about 0.7s), then
+ * stays put. Display only: it ends on exactly `cents`, and shows `cents` straight away under
+ * reduced motion or where animation frames aren't available.
+ */
+export function CountUpMoney({
+  countKey,
+  cents,
+  ...rest
+}: { countKey: string } & Parameters<typeof Money>[0]) {
+  const [shown, setShown] = useState(() => (shouldCountUp(countKey) ? 0 : cents));
+  useEffect(() => {
+    if (!shouldCountUp(countKey)) {
+      setShown(cents);
+      return;
+    }
+    const duration = 700;
+    const start = performance.now();
+    let frame = 0;
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration);
+      setShown(Math.round(cents * (1 - (1 - p) ** 3)) || 0); // || 0: never show "-0"
+      if (p < 1) frame = window.requestAnimationFrame(tick);
+      else counted.add(countKey);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [cents, countKey]);
+  return <Money cents={shown} {...rest} />;
+}
+
 export function DateText({ date }: { date: IsoDate }) {
   return <time dateTime={date}>{formatDisplayDate(date)}</time>;
 }
@@ -136,11 +179,17 @@ export function Empty({
   );
 }
 
+/** Placeholder shapes in the layout's place while data loads; the words are for screen readers. */
 export function Loading() {
   return (
-    <p className="muted" role="status">
-      Loading your data…
-    </p>
+    <div className="skeleton-page" role="status">
+      <span className="visually-hidden">Loading your data…</span>
+      <span className="skeleton skeleton-title" aria-hidden="true" />
+      <span className="skeleton skeleton-line" aria-hidden="true" />
+      <span className="skeleton skeleton-hero" aria-hidden="true" />
+      <span className="skeleton skeleton-card" aria-hidden="true" />
+      <span className="skeleton skeleton-card" aria-hidden="true" />
+    </div>
   );
 }
 

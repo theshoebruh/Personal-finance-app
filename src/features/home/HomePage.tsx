@@ -1,10 +1,12 @@
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useApp } from '@/app/AppContext';
 import { BUCKET_LABELS, type Bucket } from '@/domain/models';
 import type { BucketLine } from '@/domain/calculations/buckets';
 import { formatZAR } from '@/domain/money';
 import { loadDemoData } from '@/services/demoService';
-import { Alert, Card, DateText, Loading, Money, useStatus } from '@/components/ui';
+import { Alert, Card, CountUpMoney, DateText, Loading, Money, useStatus } from '@/components/ui';
+import { Icon } from '@/components/icons';
+import { openGroup, shouldAnimateClick } from '@/app/viewTransition';
 import { PageHeader } from '@/components/PageHeader';
 import { Donut, Ring, fraction, type DonutSegment, type RingTone } from '@/components/charts';
 import { BUCKET_COLOUR, BUCKET_HINT, useBuckets } from './useBuckets';
@@ -78,8 +80,19 @@ export function LeftText({ line }: { line: BucketLine }) {
 function GroupCard({ line }: { line: BucketLine }) {
   const name = BUCKET_LABELS[line.bucket];
   const over = isOver(line);
+  const navigate = useNavigate();
+  const to = `/group/${line.bucket}`;
   return (
-    <Link to={`/group/${line.bucket}`} className="group-card" data-over={over || undefined}>
+    <Link
+      to={to}
+      className={`group-card group-tone-${BUCKET_COLOUR[line.bucket]}`}
+      data-over={over || undefined}
+      onClick={(e) => {
+        if (!shouldAnimateClick(e)) return;
+        e.preventDefault();
+        openGroup(navigate, to, e.currentTarget);
+      }}
+    >
       <Ring
         value={fraction(Math.max(0, line.actualCents), Math.max(1, line.targetCents))}
         label={`${name}: ${formatZAR(line.actualCents)} of ${formatZAR(line.targetCents)} target, ${percentText(line.actualPercent)} of income (goal ${line.targetPercent}%)`}
@@ -102,6 +115,7 @@ function GroupCard({ line }: { line: BucketLine }) {
           <LeftText line={line} />
         </span>
       </span>
+      <Icon name="chevron-right" size={18} />
     </Link>
   );
 }
@@ -215,20 +229,20 @@ export function HomePage() {
       <Card className="hero">
         <p className="hero-label">Left this period</p>
         <p className="hero-amount">
-          <Money cents={summary.leftCents} />
+          <CountUpMoney cents={summary.leftCents} countKey="home-left" split />
         </p>
         <div className="totals-row">
           <div>
             <span className="totals-label">Income</span>
-            <Money cents={summary.incomeCents} className="positive" />
+            <CountUpMoney cents={summary.incomeCents} countKey="home-income" className="positive" />
           </div>
           <div>
             <span className="totals-label">Spent</span>
-            <Money cents={summary.expenseCents} />
+            <CountUpMoney cents={summary.expenseCents} countKey="home-spent" />
           </div>
           <div>
             <span className="totals-label">Left</span>
-            <Money cents={summary.leftCents} tone />
+            <CountUpMoney cents={summary.leftCents} countKey="home-left-2" tone />
           </div>
         </div>
         {segments.length > 0 && (

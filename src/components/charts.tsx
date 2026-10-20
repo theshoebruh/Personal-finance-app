@@ -213,11 +213,12 @@ export function Donut({
           <g transform={`rotate(-90 ${c} ${c})`}>
             {arcs
               .filter((a) => a.len > 0)
-              .map((a) => (
+              .map((a, i) => (
                 <circle
                   key={a.key}
                   className={`donut-arc stroke-chart-${a.colour}`}
-                  style={a.tint ? { stroke: a.tint } : undefined}
+                  // --i staggers the draw-in animation, one arc after another.
+                  style={{ ...(a.tint ? { stroke: a.tint } : {}), ['--i' as string]: i }}
                   cx={c}
                   cy={c}
                   r={r}
