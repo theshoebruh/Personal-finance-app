@@ -14,6 +14,7 @@ import {
   setGroupTargets,
 } from './categoriesService';
 import { ensureInitialised } from './settingsService';
+import { SUGGESTED_CATEGORY_IDS } from '@/domain/defaults';
 
 let n = 0;
 let db: FinanceDb;
@@ -66,5 +67,28 @@ describe('categories', () => {
     await setGroupTargets(store, { needs: 45, wants: 25, savings: 20, rf: 5, buffer: 5 });
     const s = await store.settings.get(SETTINGS_ID);
     expect(bucketTargets(s!)).toEqual({ needs: 45, wants: 25, savings: 20, rf: 5, buffer: 5 });
+  });
+
+  it('an older setup gets the Savings and RF categories on start-up, leaving hidden ones hidden', async () => {
+    // Simulate a setup from before the five-group layout.
+    for (const id of SUGGESTED_CATEGORY_IDS) await store.categories.delete(id);
+    await setCategoryArchived(store, 'cat-shopping', true);
+    const before = (await store.categories.list()).filter((c) => c.group === 'savings');
+    expect(before).toEqual([]);
+
+    await ensureInitialised(store);
+    const cats = await store.categories.list();
+    expect(
+      cats
+        .filter((c) => c.group === 'savings')
+        .map((c) => c.name)
+        .sort(),
+    ).toEqual(['Emergency fund', 'Savings']);
+    expect(cats.find((c) => c.id === 'cat-rf-stock')).toMatchObject({
+      name: 'Stock & printing',
+      workspace: 'both',
+    });
+    expect(cats.find((c) => c.id === 'cat-shopping')?.archived).toBe(true);
+    expect(missingSuggestions(cats)).toEqual([]);
   });
 });
