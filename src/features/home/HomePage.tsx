@@ -9,13 +9,12 @@ import { PageHeader } from '@/components/PageHeader';
 import { Donut, Ring, fraction, type DonutSegment, type RingTone } from '@/components/charts';
 import { BUCKET_COLOUR, BUCKET_HINT, useBuckets } from './useBuckets';
 
-/** Ring colour: the group's own colour, amber near the target, red over it. */
+/**
+ * Rings always use the group's own colour so the five groups are easy to tell apart; whether a
+ * group is over, nearly at or past its goal is said in words (see `LeftText`) and, when over, by
+ * the card's red edge.
+ */
 export function ringTone(line: BucketLine): RingTone {
-  if (line.bucket === 'buffer') {
-    return line.actualCents < 0 ? 'negative' : line.leftCents < 0 ? 'warning' : 'positive';
-  }
-  if (line.leftCents < 0) return 'negative';
-  if (line.targetCents > 0 && line.actualCents >= line.targetCents * 0.85) return 'warning';
   return `chart-${BUCKET_COLOUR[line.bucket]}`;
 }
 
@@ -23,31 +22,62 @@ export function percentText(p: number | null): string {
   return p === null ? '–' : `${p.toLocaleString('en-ZA', { maximumFractionDigits: 1 })}%`;
 }
 
-/** "R152 left", "R796 over" or, for Buffer, how it compares with its target. */
+/** Groups you want to reach (Savings, Buffer) rather than stay under. */
+function isGoalToReach(line: BucketLine): boolean {
+  return line.bucket === 'savings' || line.bucket === 'buffer';
+}
+
+/** Over budget: a spending group past its goal, or less than nothing left over. */
+export function isOver(line: BucketLine): boolean {
+  if (line.bucket === 'buffer') return line.actualCents < 0;
+  return !isGoalToReach(line) && line.leftCents < 0;
+}
+
+/**
+ * Status in words. Needs, Wants, RF: "R152 left", "Almost at goal · R40 left" (85%+), "R796
+ * over". Savings and Buffer count up: "R85 to go" or "Goal reached ✓"; a negative Buffer means
+ * spending is more than income.
+ */
 export function LeftText({ line }: { line: BucketLine }) {
-  if (line.bucket === 'buffer') {
-    return line.leftCents >= 0 ? (
-      <span className="positive">On target</span>
+  if (isGoalToReach(line)) {
+    if (line.bucket === 'buffer' && line.actualCents < 0) {
+      return (
+        <span className="negative">
+          Spent <Money cents={-line.actualCents} /> more than income
+        </span>
+      );
+    }
+    const toGo = line.targetCents - line.actualCents;
+    return toGo <= 0 ? (
+      <span className="positive">Goal reached ✓</span>
     ) : (
-      <span className="warning-text">
-        <Money cents={-line.leftCents} /> under target
+      <span>
+        <Money cents={toGo} /> to go
       </span>
     );
   }
-  return line.leftCents >= 0 ? (
-    <span>
-      <Money cents={line.leftCents} /> left
+  if (line.leftCents < 0) {
+    return (
+      <span className="negative">
+        <Money cents={-line.leftCents} /> over
+      </span>
+    );
+  }
+  const almost = line.targetCents > 0 && line.actualCents >= line.targetCents * 0.85;
+  return almost ? (
+    <span className="warning-text">
+      Almost at goal · <Money cents={line.leftCents} /> left
     </span>
   ) : (
-    <span className="negative">
-      <Money cents={-line.leftCents} /> over
+    <span>
+      <Money cents={line.leftCents} /> left
     </span>
   );
 }
 
 function GroupCard({ line }: { line: BucketLine }) {
   const name = BUCKET_LABELS[line.bucket];
-  const over = line.bucket !== 'buffer' && line.leftCents < 0;
+  const over = isOver(line);
   return (
     <Link to={`/group/${line.bucket}`} className="group-card" data-over={over || undefined}>
       <Ring

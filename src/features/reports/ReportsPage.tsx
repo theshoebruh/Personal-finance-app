@@ -124,7 +124,8 @@ export function ReportsPage() {
                 label: `${BUCKET_LABELS[l.bucket]} (goal ${l.targetPercent}%)`,
                 limitCents: l.targetCents,
                 spentCents: l.actualCents,
-                remainingCents: l.leftCents,
+                // Saving more than the goal isn't "over": show it as reached.
+                remainingCents: l.bucket === 'savings' ? Math.max(0, l.leftCents) : l.leftCents,
               }))}
             />
           )}
