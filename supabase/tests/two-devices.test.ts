@@ -17,6 +17,8 @@ import {
 import { exportBackup, parseBackup, restoreBackup } from '@/services/backupService';
 import { commitImport, prepareImport } from '@/services/importService';
 import { getSettings, updateSettings } from '@/services/settingsService';
+import { setGroupTargets } from '@/services/categoriesService';
+import { bucketTargets } from '@/domain/calculations/buckets';
 import { key, newUser, url, type TestUser } from './helpers';
 
 const opened: FinanceDb[] = [];
@@ -123,6 +125,23 @@ describe('two devices through the real Supabase API', () => {
     });
     expect(await phone.db.accounts.count()).toBe(1);
     expect(await phone.db.categories.count()).toBeGreaterThan(20);
+    expect(await phone.engine.listConflicts()).toEqual([]);
+  });
+
+  it('group goals set on one device reach the other', async () => {
+    const user = await newUser('goals');
+    const pc = await device(user);
+    await setGroupTargets(pc.store, { needs: 45, wants: 25, savings: 20, rf: 5, buffer: 5 });
+    await pc.engine.syncNow();
+
+    const phone = await device(user);
+    expect(bucketTargets(await getSettings(phone.store))).toEqual({
+      needs: 45,
+      wants: 25,
+      savings: 20,
+      rf: 5,
+      buffer: 5,
+    });
     expect(await phone.engine.listConflicts()).toEqual([]);
   });
 

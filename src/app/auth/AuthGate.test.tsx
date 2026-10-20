@@ -123,6 +123,6 @@ describe('authentication', () => {
     expect(await screen.findByText(/needs to download your data once/)).toBeInTheDocument();
     remote.offline = false;
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByText(/work out what is safe to spend/i)).toBeInTheDocument();
+    expect(await screen.findByText(/your money in five groups/i)).toBeInTheDocument();
   });
 });

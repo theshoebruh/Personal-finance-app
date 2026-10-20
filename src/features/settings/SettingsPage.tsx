@@ -30,6 +30,9 @@ import {
 } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
 
+/** Off in the simple layout: tithe, savings %, available-to-spend and emergency-fund settings. */
+const SHOW_ADVANCED_PLAN = false;
+
 function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) => void }) {
   const { store, today } = useApp();
   const s = data.settings;
@@ -134,9 +137,14 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
     <form className="form" onSubmit={submit} noValidate aria-label="Budget settings">
       {submitError && <Alert tone="negative">{submitError}</Alert>}
       <fieldset>
-        <legend>Income plan</legend>
+        <legend>Salary</legend>
         <div className="form-row">
-          <Field label="Monthly salary (R)" htmlFor="s-salary" error={errors.salary}>
+          <Field
+            label="Usual monthly salary (R)"
+            htmlFor="s-salary"
+            error={errors.salary}
+            hint="Helps recognise the day your salary arrives, which starts a new period."
+          >
             <input
               id="s-salary"
               inputMode="decimal"
@@ -144,35 +152,39 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
               onChange={(e) => setSalary(e.target.value)}
             />
           </Field>
-          <Field label="Monthly tithe (R)" htmlFor="s-tithe" error={errors.tithe}>
-            <input
-              id="s-tithe"
-              inputMode="decimal"
-              value={tithe}
-              onChange={(e) => setTithe(e.target.value)}
-            />
-          </Field>
-          <Field
-            label="Savings target (%)"
-            htmlFor="s-rate"
-            error={errors.rate}
-            hint={
-              rateWarn === 'high'
-                ? 'That is a high target — check it leaves enough for essentials.'
-                : rateWarn === 'zero'
-                  ? 'No savings will be planned.'
-                  : 'Applied to salary after tithe.'
-            }
-          >
-            <input
-              id="s-rate"
-              inputMode="decimal"
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-            />
-          </Field>
+          {SHOW_ADVANCED_PLAN && (
+            <>
+              <Field label="Monthly tithe (R)" htmlFor="s-tithe" error={errors.tithe}>
+                <input
+                  id="s-tithe"
+                  inputMode="decimal"
+                  value={tithe}
+                  onChange={(e) => setTithe(e.target.value)}
+                />
+              </Field>
+              <Field
+                label="Savings target (%)"
+                htmlFor="s-rate"
+                error={errors.rate}
+                hint={
+                  rateWarn === 'high'
+                    ? 'That is a high target — check it leaves enough for essentials.'
+                    : rateWarn === 'zero'
+                      ? 'No savings will be planned.'
+                      : 'Applied to salary after tithe.'
+                }
+              >
+                <input
+                  id="s-rate"
+                  inputMode="decimal"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                />
+              </Field>
+            </>
+          )}
         </div>
-        {preview && (
+        {SHOW_ADVANCED_PLAN && preview && (
           <p className="small muted">
             Budgetable salary <Money cents={preview.base} /> · savings target{' '}
             <Money cents={preview.target} /> a month. These are defaults you can change; other
@@ -251,52 +263,64 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
         </p>
       </fieldset>
 
-      <fieldset>
-        <legend>Available-to-spend options</legend>
-        <label className="check">
-          <input type="checkbox" checked={strict} onChange={(e) => setStrict(e.target.checked)} />
-          Cap available-to-spend at my remaining wants budget (when wants limits are set)
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={reserve} onChange={(e) => setReserve(e.target.checked)} />
-          Reserve this period's planned savings that I haven't set aside yet
-        </label>
-      </fieldset>
+      {SHOW_ADVANCED_PLAN && (
+        <>
+          <fieldset>
+            <legend>Available-to-spend options</legend>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={strict}
+                onChange={(e) => setStrict(e.target.checked)}
+              />
+              Cap available-to-spend at my remaining wants budget (when wants limits are set)
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={reserve}
+                onChange={(e) => setReserve(e.target.checked)}
+              />
+              Reserve this period's planned savings that I haven't set aside yet
+            </label>
+          </fieldset>
 
-      <fieldset>
-        <legend>Emergency fund</legend>
-        <div className="form-row">
-          <Field label="Months of essential expenses" htmlFor="s-efm" error={errors.efMonths}>
-            <input
-              id="s-efm"
-              inputMode="numeric"
-              value={efMonths}
-              onChange={(e) => setEfMonths(e.target.value)}
-            />
-          </Field>
-          <Field label="Or a fixed target (R, optional)" htmlFor="s-eff" error={errors.efFixed}>
-            <input
-              id="s-eff"
-              inputMode="decimal"
-              value={efFixed}
-              onChange={(e) => setEfFixed(e.target.value)}
-            />
-          </Field>
-          <Field
-            label="Essential monthly expenses (R, optional)"
-            htmlFor="s-ess"
-            error={errors.essential}
-            hint="Leave blank to estimate from essential budgets or recent spending."
-          >
-            <input
-              id="s-ess"
-              inputMode="decimal"
-              value={essential}
-              onChange={(e) => setEssential(e.target.value)}
-            />
-          </Field>
-        </div>
-      </fieldset>
+          <fieldset>
+            <legend>Emergency fund</legend>
+            <div className="form-row">
+              <Field label="Months of essential expenses" htmlFor="s-efm" error={errors.efMonths}>
+                <input
+                  id="s-efm"
+                  inputMode="numeric"
+                  value={efMonths}
+                  onChange={(e) => setEfMonths(e.target.value)}
+                />
+              </Field>
+              <Field label="Or a fixed target (R, optional)" htmlFor="s-eff" error={errors.efFixed}>
+                <input
+                  id="s-eff"
+                  inputMode="decimal"
+                  value={efFixed}
+                  onChange={(e) => setEfFixed(e.target.value)}
+                />
+              </Field>
+              <Field
+                label="Essential monthly expenses (R, optional)"
+                htmlFor="s-ess"
+                error={errors.essential}
+                hint="Leave blank to estimate from essential budgets or recent spending."
+              >
+                <input
+                  id="s-ess"
+                  inputMode="decimal"
+                  value={essential}
+                  onChange={(e) => setEssential(e.target.value)}
+                />
+              </Field>
+            </div>
+          </fieldset>
+        </>
+      )}
 
       <div className="btn-row">
         <button type="submit" className="btn btn-primary">
@@ -656,7 +680,7 @@ export function SettingsPage() {
       <PageHeader title="Settings" />
       <div className="grid">
         <SyncCard />
-        <Card title="Budget settings">
+        <Card title="Pay and period">
           <PlanForm
             key={data.settings.updatedAt}
             data={data}

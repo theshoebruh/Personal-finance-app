@@ -75,13 +75,38 @@ export const CATEGORY_GROUPS = [
 ] as const;
 export type CategoryGroup = (typeof CATEGORY_GROUPS)[number];
 export const CATEGORY_GROUP_LABELS: Record<CategoryGroup, string> = {
-  essential: 'Essential needs',
-  discretionary: 'Wants / lifestyle',
-  savings: 'Savings & goals',
+  essential: 'Needs',
+  discretionary: 'Wants',
+  savings: 'Savings',
   income: 'Income',
-  business_expense: 'Business expense',
-  business_income: 'Business income',
+  business_expense: 'RF (side business)',
+  business_income: 'Side business income',
 };
+
+/**
+ * The five budget groups shown to the user. Four are spending groups backed by a category group;
+ * Buffer is what's left over (income − all spending), so it has no categories.
+ */
+export const BUCKETS = ['needs', 'wants', 'savings', 'rf', 'buffer'] as const;
+export type Bucket = (typeof BUCKETS)[number];
+export type SpendingBucket = Exclude<Bucket, 'buffer'>;
+export const BUCKET_LABELS: Record<Bucket, string> = {
+  needs: 'Needs',
+  wants: 'Wants',
+  savings: 'Savings',
+  rf: 'RF',
+  buffer: 'Buffer',
+};
+export const BUCKET_GROUP: Record<SpendingBucket, CategoryGroup> = {
+  needs: 'essential',
+  wants: 'discretionary',
+  savings: 'savings',
+  rf: 'business_expense',
+};
+export function bucketForGroup(group: CategoryGroup): SpendingBucket | null {
+  const entry = Object.entries(BUCKET_GROUP).find(([, g]) => g === group);
+  return entry ? (entry[0] as SpendingBucket) : null;
+}
 
 export const categorySchema = z.object({
   id,
@@ -394,6 +419,11 @@ export const appSettingsSchema = z.object({
   monthlySalaryCents: nonNegativeCents,
   monthlyTitheCents: nonNegativeCents,
   savingsRatePercent: z.number().min(0).max(100),
+  /** Group targets as % of income; null/absent = default (50 / 20 / 5 / 5; savings above). */
+  needsPercent: z.number().min(0).max(100).nullable().optional(),
+  wantsPercent: z.number().min(0).max(100).nullable().optional(),
+  sideBusinessPercent: z.number().min(0).max(100).nullable().optional(),
+  bufferPercent: z.number().min(0).max(100).nullable().optional(),
   /** Expected payday day-of-month (1–31, clamped to month length). Null = no payday set. */
   paydayDayOfMonth: z.number().int().min(1).max(31).nullable(),
   /** One-off override for the next payday (e.g. salary paid early before a weekend). */

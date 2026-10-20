@@ -14,12 +14,19 @@ import { ReportsPage } from '@/features/reports/ReportsPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { ImportPage } from '@/features/imports/ImportPage';
 import { MorePage } from '@/features/more/MorePage';
+import { HomePage } from '@/features/home/HomePage';
+import { GroupPage } from '@/features/home/GroupPage';
+import { CategoriesPage } from '@/features/categories/CategoriesPage';
 
 function AppRoutes() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<DashboardPage />} />
+        <Route index element={<HomePage />} />
+        <Route path="group/:bucket" element={<GroupPage />} />
+        <Route path="categories" element={<CategoriesPage />} />
+        {/* Hidden in the simple layout (no links), kept so nothing is lost. */}
+        <Route path="overview" element={<DashboardPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
         <Route path="accounts" element={<AccountsPage />} />
         <Route path="budgets" element={<BudgetsPage />} />
@@ -29,7 +36,7 @@ function AppRoutes() {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="import" element={<ImportPage />} />
         <Route path="more" element={<MorePage />} />
-        <Route path="*" element={<DashboardPage />} />
+        <Route path="*" element={<HomePage />} />
       </Route>
     </Routes>
   );

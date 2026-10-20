@@ -8,29 +8,22 @@ export interface NavItem {
   hint?: string;
 }
 
-/** Sidebar groups (desktop). */
+/** Sidebar groups (desktop). Goals, Business, Budgets and the detailed overview are hidden. */
 export const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
     items: [
       { to: '/', label: 'Home', icon: 'home' },
       { to: '/transactions', label: 'Activity', icon: 'activity' },
-      { to: '/budgets', label: 'Budgets', icon: 'budgets' },
+      { to: '/categories', label: 'Categories', icon: 'budgets' },
       { to: '/reports', label: 'Reports', icon: 'reports' },
-    ],
-  },
-  {
-    label: 'Money',
-    items: [
-      { to: '/accounts', label: 'Accounts', icon: 'accounts' },
-      { to: '/goals', label: 'Goals', icon: 'goals' },
-      { to: '/business', label: 'Business', icon: 'business' },
     ],
   },
   {
     label: 'Tools',
     items: [
       { to: '/import', label: 'Import statement', icon: 'import' },
+      { to: '/accounts', label: 'Accounts', icon: 'accounts' },
       { to: '/settings', label: 'Settings', icon: 'settings' },
     ],
   },
@@ -40,9 +33,7 @@ export const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
 export const MORE_GROUPS: NavItem[][] = [
   [
     { to: '/reports', label: 'Reports', icon: 'reports', hint: 'Charts of income and spending' },
-    { to: '/goals', label: 'Goals', icon: 'goals', hint: 'Savings and emergency fund' },
     { to: '/accounts', label: 'Accounts', icon: 'accounts', hint: 'Balances and opening dates' },
-    { to: '/business', label: 'Business', icon: 'business', hint: 'Your business workspace' },
   ],
   [
     {
@@ -51,7 +42,7 @@ export const MORE_GROUPS: NavItem[][] = [
       icon: 'import',
       hint: 'Bring in a CSV and see past imports',
     },
-    { to: '/settings', label: 'Settings', icon: 'settings', hint: 'Income, payday, backup' },
+    { to: '/settings', label: 'Settings', icon: 'settings', hint: 'Payday, sync, backup' },
   ],
 ];
 
@@ -59,18 +50,21 @@ export const MORE_GROUPS: NavItem[][] = [
 export const TAB_ITEMS: NavItem[] = [
   { to: '/', label: 'Home', icon: 'home' },
   { to: '/transactions', label: 'Activity', icon: 'activity' },
-  { to: '/budgets', label: 'Budgets', icon: 'budgets' },
+  { to: '/categories', label: 'Categories', icon: 'budgets' },
 ];
 
 /** Where the phone back link goes from each page that isn't a tab. */
 export const BACK_LINKS: Record<string, { to: string; label: string }> = {
   '/reports': { to: '/more', label: 'More' },
-  '/goals': { to: '/more', label: 'More' },
   '/accounts': { to: '/more', label: 'More' },
-  '/business': { to: '/more', label: 'More' },
   '/settings': { to: '/more', label: 'More' },
   '/import': { to: '/', label: 'Home' },
+  // Hidden pages, still reachable by address.
+  '/goals': { to: '/more', label: 'More' },
+  '/business': { to: '/more', label: 'More' },
+  '/budgets': { to: '/categories', label: 'Categories' },
+  '/overview': { to: '/', label: 'Home' },
 };
 
 /** Paths that light up the More tab. */
-export const MORE_PATHS = ['/more', ...Object.keys(BACK_LINKS).filter((p) => p !== '/import')];
+export const MORE_PATHS = ['/more', '/reports', '/accounts', '/settings', '/goals', '/business'];

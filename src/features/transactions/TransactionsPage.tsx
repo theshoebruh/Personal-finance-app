@@ -10,7 +10,6 @@ import {
   TRANSACTION_TYPES,
   TRANSACTION_TYPE_LABELS,
   TRANSFER_KIND_LABELS,
-  WORKSPACE_LABELS,
   type Transaction,
 } from '@/domain/models';
 import { inView } from '@/domain/calculations/reporting';
@@ -20,16 +19,7 @@ import {
   deleteTransactionPermanently,
   setTransactionArchived,
 } from '@/services/transactionsService';
-import {
-  Badge,
-  Card,
-  DateText,
-  Empty,
-  Loading,
-  Money,
-  WorkspaceSwitcher,
-  useStatus,
-} from '@/components/ui';
+import { Badge, Card, DateText, Empty, Loading, Money, useStatus } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
 import { AccountOptions, CategoryOptions, lookup } from '../shared';
 import { ConvertToTransferPanel, TransactionForm, TransferForm } from './TransactionForms';
@@ -45,7 +35,9 @@ function panelFromParam(value: string | null): Panel {
 }
 
 export function TransactionsPage() {
-  const { store, view, setView, today } = useApp();
+  const { store, today } = useApp();
+  // The simple layout has no separate business workspace: Activity lists every account.
+  const view = 'combined' as const;
   const data = useFinanceData();
   const { run, statusNode, setStatus } = useStatus();
   const confirm = useConfirm();
@@ -206,11 +198,7 @@ export function TransactionsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Activity"
-        subtitle="All your transactions, newest first"
-        actions={<WorkspaceSwitcher value={view} onChange={setView} />}
-      />
+      <PageHeader title="Activity" subtitle="All your transactions, newest first" />
 
       <div className="toolbar">
         <div className="btn-row">
@@ -481,7 +469,6 @@ export function TransactionsPage() {
                               {TRANSACTION_STATUS_LABELS[t.status]}
                             </Badge>
                           )}
-                          {view === 'combined' && <Badge>{WORKSPACE_LABELS[t.workspace]}</Badge>}
                           {t.source !== 'manual' && (
                             <span>{TRANSACTION_SOURCE_LABELS[t.source]}</span>
                           )}

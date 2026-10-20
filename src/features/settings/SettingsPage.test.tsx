@@ -5,7 +5,7 @@ import { App } from '@/app/App';
 import { FinanceDb } from '@/data/local-db/db';
 import { createDexieStore } from '@/data/repositories/dexieStore';
 import type { FinanceStore } from '@/data/repositories/types';
-import { ensureInitialised } from '@/services/settingsService';
+import { ensureInitialised, updateSettings } from '@/services/settingsService';
 import { SETTINGS_ID } from '@/domain/models';
 
 let n = 0;
@@ -16,6 +16,7 @@ beforeEach(async () => {
   db = new FinanceDb(`settings-ui-${++n}`);
   store = createDexieStore(db);
   await ensureInitialised(store);
+  await updateSettings(store, { budgetPeriodMode: 'calendar_month' });
 });
 
 afterEach(async () => {
