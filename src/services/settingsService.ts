@@ -1,5 +1,5 @@
 import { type AppSettings, SETTINGS_ID } from '@/domain/models';
-import { defaultSettings, seedCategories } from '@/domain/defaults';
+import { SUGGESTED_CATEGORY_IDS, defaultSettings, seedCategories } from '@/domain/defaults';
 import type { FinanceStore } from '@/data/repositories/types';
 import { type Clock, systemClock } from './common';
 
@@ -15,7 +15,16 @@ export async function ensureInitialised(
     const now = clock.now();
     const existingCats = new Set((await store.categories.list()).map((c) => c.id));
     const missing = seedCategories(now).filter((c) => !existingCats.has(c.id));
-    if (missing.length > 0 && existingCats.size === 0) await store.categories.bulkPut(missing);
+    if (missing.length > 0 && existingCats.size === 0) {
+      await store.categories.bulkPut(missing);
+    } else {
+      // Setups from before the five-group layout lack its Savings and RF categories (and a few
+      // others); add them so every group has categories. Hidden ones still exist, so they stay
+      // hidden. Same ids on every device, so two devices adding them sync without conflicts.
+      const suggested = new Set<string>(SUGGESTED_CATEGORY_IDS);
+      const toAdd = missing.filter((c) => suggested.has(c.id));
+      if (toAdd.length > 0) await store.categories.bulkPut(toAdd);
+    }
     const settings = await store.settings.get(SETTINGS_ID);
     if (settings) return settings;
     return store.settings.put(defaultSettings(now));
