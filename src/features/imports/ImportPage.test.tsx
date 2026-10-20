@@ -7,6 +7,7 @@ import { createDexieStore } from '@/data/repositories/dexieStore';
 import type { FinanceStore } from '@/data/repositories/types';
 import { createAccount } from '@/services/accountsService';
 import { ensureInitialised } from '@/services/settingsService';
+import { makeXlsx } from '@/test/xlsx';
 
 let n = 0;
 let db: FinanceDb;
@@ -44,7 +45,7 @@ type User = ReturnType<typeof userEvent.setup>;
 async function chooseAccountAndFile(user: User, file: File, account = 'Capitec main') {
   await user.click(await screen.findByRole('radio', { name: new RegExp(account) }));
   await user.click(screen.getByRole('button', { name: 'Continue' }));
-  await user.upload(await screen.findByLabelText('Statement file (.csv)'), file);
+  await user.upload(await screen.findByLabelText('Statement file (CSV or Excel)'), file);
 }
 
 /** Steps 1–3: through to the review step. */
@@ -81,11 +82,40 @@ it('imports a CSV after review and can undo it', async () => {
   expect(await within(history).findByText('Undone')).toBeInTheDocument();
 });
 
-it('explains that Excel workbooks must be saved as CSV', async () => {
+it('imports an Excel workbook through the same steps', async () => {
   const user = userEvent.setup({ delay: null });
   render(<App db={db} store={store} initialPath="/import" />);
-  await chooseAccountAndFile(user, new File(['x'], 'statement.xlsx', { type: 'text/csv' }));
-  expect(await screen.findByText(/Save As → “CSV UTF-8”/)).toBeInTheDocument();
+  // Made-up rows; 46082 = 2026-03-01.
+  const workbook = makeXlsx([
+    {
+      name: 'Statement',
+      rows: [
+        ['Date', 'Description', 'Amount'],
+        [{ date: 46082 }, 'SALARY', 12000],
+        [{ date: 46083 }, 'COFFEE', -35],
+      ],
+    },
+  ]);
+  const review = await goToReview(
+    user,
+    new File([workbook], 'march.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }),
+  );
+  expect(within(review).getByText('SALARY')).toBeInTheDocument();
+  await user.click(within(review).getByRole('button', { name: 'Import 2 transactions' }));
+  expect(
+    await screen.findByRole('heading', { name: 'Imported 2 transactions' }),
+  ).toBeInTheDocument();
+  await waitFor(async () => expect(await store.transactions.list()).toHaveLength(2));
+});
+
+it('explains that old .xls workbooks need saving as .xlsx or CSV', async () => {
+  const user = userEvent.setup({ delay: null });
+  render(<App db={db} store={store} initialPath="/import" />);
+  // The picker only offers CSV and .xlsx files; the message is a safety net past that filter.
+  await chooseAccountAndFile(user, new File(['x'], 'statement.xls', { type: 'text/csv' }));
+  expect(await screen.findByText(/Save it as an Excel workbook \(\.xlsx\)/)).toBeInTheDocument();
 });
 
 it('suggests a transfer in review and imports it as one when chosen', async () => {

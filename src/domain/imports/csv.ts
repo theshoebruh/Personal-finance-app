@@ -11,6 +11,8 @@ export interface ParsedCsv {
   delimiter: string;
   /** Parser-level problems, e.g. unmatched quotes. */
   warnings: string[];
+  /** Neutral information about how the file was read, e.g. which Excel sheet. */
+  note?: string;
 }
 
 export class CsvError extends Error {
@@ -41,7 +43,24 @@ export function parseCsv(text: string): ParsedCsv {
     skipEmptyLines: 'greedy',
     delimitersToGuess: [',', ';', '\t', '|'],
   });
-  const rows = result.data
+  const warnings = result.errors
+    .filter((e) => e.type !== 'Delimiter')
+    .slice(0, 5)
+    .map((e) => `Row ${(e.row ?? 0) + 1}: ${e.message}`);
+  return finaliseRows(result.data, result.meta.delimiter, warnings, 'CSV');
+}
+
+/**
+ * Shared by CSV and Excel: sanitise every cell, drop blank rows and enforce the row/column limits,
+ * so both formats feed the same review steps with the same safety checks.
+ */
+export function finaliseRows(
+  raw: readonly (readonly unknown[])[],
+  delimiter: string,
+  warnings: string[],
+  kind: 'CSV' | 'spreadsheet',
+): ParsedCsv {
+  const rows = raw
     .map((r) => r.map((c) => sanitiseCell(String(c ?? ''))))
     .filter((r) => r.some((c) => c !== ''));
   if (rows.length === 0) throw new CsvError('No rows could be read from this file.');
@@ -52,11 +71,7 @@ export function parseCsv(text: string): ParsedCsv {
   }
   const maxCols = Math.max(...rows.map((r) => r.length));
   if (maxCols < 2) {
-    throw new CsvError('Only one column was found. This does not look like a transaction CSV.');
+    throw new CsvError(`Only one column was found. This does not look like a transaction ${kind}.`);
   }
-  const warnings = result.errors
-    .filter((e) => e.type !== 'Delimiter')
-    .slice(0, 5)
-    .map((e) => `Row ${(e.row ?? 0) + 1}: ${e.message}`);
-  return { rows, delimiter: result.meta.delimiter, warnings };
+  return { rows, delimiter, warnings };
 }

@@ -17,6 +17,7 @@ import {
   undoImport,
 } from './importService';
 import { bulkSetCategory } from './transactionsService';
+import { makeXlsx } from '@/test/xlsx';
 
 let n = 0;
 let db: FinanceDb;
@@ -234,7 +235,8 @@ describe('CSV import', () => {
   });
 
   it('rejects unsupported files and archived accounts with clear messages', async () => {
-    expect(() => checkImportFile({ name: 'statement.xlsx', size: 10 })).toThrow(/CSV UTF-8/);
+    expect(() => checkImportFile({ name: 'statement.xlsx', size: 10 })).not.toThrow();
+    expect(() => checkImportFile({ name: 'statement.xls', size: 10 })).toThrow(/\.xlsx/);
     expect(() => checkImportFile({ name: 'statement.pdf', size: 10 })).toThrow(/PDF/);
     expect(() => checkImportFile({ name: 'big.csv', size: 6 * 1024 * 1024 })).toThrow(/5 MB/);
     await expect(prepareImport(store, { accountId, text: '' })).rejects.toThrow(/empty/);
@@ -413,5 +415,39 @@ describe('automatic categories', () => {
     expect(p.staging.rows.find((r) => r.description === 'Coffee shop')?.categoryId).toBe(
       'cat-groceries',
     );
+  });
+});
+
+describe('Excel import', () => {
+  // Made-up rows; 46082 = 2026-03-01 in Excel's 1900 date system.
+  const WORKBOOK = makeXlsx([
+    {
+      name: 'March',
+      rows: [
+        ['Date', 'Description', 'Amount', 'Balance'],
+        [{ date: 46082 }, 'SALARY ACME', 12000, 13000],
+        [{ date: 46083 }, 'CHURCH TITHE', -1200, 11800],
+        [{ date: 46084 }, 'Coffee shop', -45.5, 11754.5],
+      ],
+    },
+  ]);
+
+  it('imports a workbook through the same mapping, review and commit as a CSV', async () => {
+    const prepared = await prepareImport(store, {
+      accountId,
+      workbook: WORKBOOK,
+      fileName: 'march.xlsx',
+    });
+    expect(prepared.parsed.note).toBe('Read the sheet “March”.');
+    expect(prepared.staging.mapping).toMatchObject({ dateColumn: 0, descriptionColumn: 1 });
+    const rows = prepared.staging.rows;
+    expect(rows.map((r) => [r.date, r.description, r.amountCents])).toEqual([
+      ['2026-03-01', 'SALARY ACME', 1_200_000],
+      ['2026-03-02', 'CHURCH TITHE', -120_000],
+      ['2026-03-03', 'Coffee shop', -4_550],
+    ]);
+    const result = await commitImport(store, { prepared, rows, saveMapping: true });
+    expect(result.created).toBe(3);
+    expect((await store.importBatches.get(result.batch.id))?.fileName).toBe('march.xlsx');
   });
 });

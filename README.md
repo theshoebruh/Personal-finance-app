@@ -8,7 +8,7 @@ explained.
 - Works offline: each device keeps a working copy in IndexedDB
 - Optional **sync between devices** through your own Supabase account (sign-in, row-level security)
 - Personal and Business workspaces, plus a Combined view
-- No bank API: import CSV statements (reviewed before saving, undoable) or enter transactions manually
+- No bank API: import CSV or Excel (.xlsx) statements (reviewed before saving, undoable) or enter transactions manually
 
 See [`docs/implementation-status.md`](docs/implementation-status.md) for what is built and the
 assumptions made, [`docs/backend-plan.md`](docs/backend-plan.md) for the sync design, and
@@ -155,7 +155,7 @@ item. A one-off override plans for a known early payday.
 
 ### Importing statements
 
-**Import statement** (`/import`) reads a CSV file on the device; the file itself is never uploaded
+**Import statement** (`/import`) reads a CSV or Excel (.xlsx) file on the device; the file itself is never uploaded
 and no data is sent to any AI service. You confirm the column mapping against a preview, review every
 row (unreadable rows are listed and never imported; duplicates are unticked; identical rows in one
 file stay ticked but flagged), then import. Rows that look like **transfers between your own
@@ -185,7 +185,7 @@ their original row text, and can be removed together with **Undo import**.
 - No bank connection of any kind. Capitec transaction-history access via an API is unverified, and
   the app never asks for banking credentials, PINs or OTPs. It cannot read iPhone SMS or
   notifications.
-- Statement import is CSV only (save Excel workbooks as “CSV UTF-8”); no PDF import.
+- Statement import reads CSV and Excel .xlsx/.xlsm files (the first visible sheet; stored values only, formulas and macros are never run). Old .xls, .ods and PDF statements aren't supported.
 - Invoices, projects, charts, CSV/Excel export, what-if scenarios, categorisation rules, split
   transactions and configurable alert preferences are not built yet.
 - Offline behaviour and the service worker were verified in headless Microsoft Edge on Windows, not
