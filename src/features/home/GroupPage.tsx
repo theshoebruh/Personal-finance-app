@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useApp } from '@/app/AppContext';
 import {
   BUCKET_GROUP,
@@ -10,7 +10,8 @@ import {
 import { formatZAR } from '@/domain/money';
 import { isActual } from '@/domain/calculations/balances';
 import { updateTransaction } from '@/services/transactionsService';
-import { Card, DateText, Empty, Loading, Money, useStatus } from '@/components/ui';
+import { Card, CountUpMoney, DateText, Empty, Loading, Money, useStatus } from '@/components/ui';
+import { backToHome, shouldAnimateClick } from '@/app/viewTransition';
 import { PageHeader } from '@/components/PageHeader';
 import { Donut, Ring, fraction, shadeOf } from '@/components/charts';
 import { CategoryOptions, lookup } from '../shared';
@@ -22,6 +23,7 @@ export function GroupPage() {
   const { store } = useApp();
   const buckets = useBuckets();
   const { run, statusNode } = useStatus();
+  const navigate = useNavigate();
   if (!buckets) return <Loading />;
   const bucket = (BUCKETS as readonly string[]).includes(param ?? '') ? (param as Bucket) : null;
   if (!bucket) {
@@ -64,10 +66,18 @@ export function GroupPage() {
             <DateText date={period.end} />
           </>
         }
-        back={{ to: '/', label: 'Home' }}
+        back={{
+          to: '/',
+          label: 'Home',
+          onLinkClick: (e) => {
+            if (!shouldAnimateClick(e)) return;
+            e.preventDefault();
+            backToHome(navigate, bucket);
+          },
+        }}
       />
 
-      <Card className="hero group-hero">
+      <Card className={`hero group-hero group-tone-${BUCKET_COLOUR[bucket]}`}>
         <Ring
           value={fraction(Math.max(0, line.actualCents), Math.max(1, line.targetCents))}
           label={`${name}: ${formatZAR(line.actualCents)} of ${formatZAR(line.targetCents)} target`}
@@ -82,7 +92,7 @@ export function GroupPage() {
           <div>
             <dt>{bucket === 'buffer' ? 'Left over' : 'Spent'}</dt>
             <dd>
-              <Money cents={line.actualCents} />
+              <CountUpMoney cents={line.actualCents} countKey={`group-${bucket}`} />
             </dd>
           </div>
           <div>

@@ -8,9 +8,13 @@
   --color-surface-3: #202b45;
   --color-border: #222d48;
   --color-border-strong: #33415f;
+  /* Hairlines and the top-edge highlight that gives cards their depth. */
+  --color-hairline: rgba(163, 173, 196, 0.1);
+  --color-highlight: rgba(255, 255, 255, 0.05);
   --color-text: #eef1f8;
   --color-text-muted: #a3adc4;
-  --color-text-faint: #7a86a3;
+  /* 4.5:1 or better on every surface up to --color-surface-2. */
+  --color-text-faint: #8591ad;
 
   /* Brass marks what you can act on: primary buttons, the active tab, links. */
   --color-accent: #f0bf5a;
@@ -44,15 +48,16 @@
   --chart-grid: #26324f;
   --chart-axis: #3a4a70;
 
-  /* System fonts only: the CSP allows no web fonts. SF Pro on iPhone. */
+  /* Inter for reading, Bebas Neue for display (both self-hosted, see fonts.css). */
   --font-sans:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
+    'Inter Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-display:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
+    'Bebas Neue', -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
 
+  --text-2xs: 0.6875rem;
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
   --text-md: 1rem;
@@ -60,6 +65,10 @@
   --text-xl: 1.375rem;
   --text-2xl: 1.875rem;
   --text-hero: clamp(2.25rem, 9vw, 3.25rem);
+  /* Bebas Neue sizes: it is condensed and all caps, so it runs larger than Inter. */
+  --display-sm: 1.5rem;
+  --display-md: 2rem;
+  --display-lg: 2.75rem;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -69,9 +78,27 @@
   --space-6: 2rem;
   --space-7: 3rem;
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 20px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-pill: 999px;
+
+  /* Depth: a highlight along the top edge plus a soft shadow underneath. */
+  --shadow-card:
+    inset 0 1px 0 var(--color-highlight), 0 1px 2px rgba(0, 0, 0, 0.35),
+    0 12px 28px -18px rgba(0, 0, 0, 0.7);
+  --shadow-raised:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 2px 6px rgba(0, 0, 0, 0.35),
+    0 24px 48px -20px rgba(0, 0, 0, 0.8);
+  --surface-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0) 45%);
+
+  /* Motion: short, eased out, transform and opacity only. Off under prefers-reduced-motion. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 150ms;
+  --dur-med: 260ms;
+  --dur-slow: 400ms;
+  --stagger: 45ms;
 
   --touch-target: 44px;
   --button-lg: 50px;

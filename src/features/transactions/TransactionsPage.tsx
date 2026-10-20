@@ -443,7 +443,7 @@ export function TransactionsPage() {
                 />
                 Select all shown
               </label>
-              <ul className="list" aria-label="Transactions">
+              <ul className="list txn-list" aria-label="Transactions">
                 {visible.map((t) => {
                   const account = accountsById.get(t.accountId);
                   const category = t.categoryId ? categoriesById.get(t.categoryId) : undefined;

@@ -107,7 +107,7 @@ export default defineConfig(({ command, mode }) => {
             ],
           },
           workbox: {
-            globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+            globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2}'],
             navigateFallback: '/index.html',
             // Only the app shell is cached. API and auth calls always go to the network.
             runtimeCaching: [],

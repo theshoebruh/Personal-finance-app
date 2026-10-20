@@ -1,4 +1,5 @@
 @import './tokens.css';
+@import './fonts.css';
 
 *,
 *::before,
@@ -16,10 +17,25 @@ body {
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--text-md);
+  /* Inter's single-storey a and open digits read calmer at small sizes. */
+  font-feature-settings: 'cv11', 'ss01';
+  letter-spacing: -0.011em;
   line-height: 1.5;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+/* A faint glow at the top of the screen, fixed so it doesn't scroll (and doesn't repaint). */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  height: 420px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(90% 100% at 50% 0%, rgba(57, 135, 229, 0.1), rgba(10, 15, 28, 0));
 }
 
 h1,
@@ -28,6 +44,8 @@ h3,
 h4 {
   line-height: 1.25;
   margin: 0 0 var(--space-3);
+  letter-spacing: -0.02em;
+  font-weight: 650;
 }
 h1 {
   font-size: var(--text-2xl);
@@ -48,6 +66,9 @@ a {
 :focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+}
+::selection {
+  background: rgba(240, 191, 90, 0.35);
 }
 
 .visually-hidden {
@@ -114,13 +135,13 @@ a {
   transition: background-color 0.2s;
 }
 .page-bar[data-compact='true'] {
-  background: rgba(10, 15, 28, 0.9);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--color-border);
+  background: rgba(10, 15, 28, 0.82);
+  backdrop-filter: saturate(160%) blur(18px);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+  box-shadow: 0 1px 0 var(--color-hairline);
 }
 .page-bar-title {
-  font-weight: 650;
+  font-weight: 620;
   font-size: var(--text-md);
   opacity: 0;
   transition: opacity 0.2s;
@@ -142,9 +163,14 @@ a {
   text-decoration: none;
   font: inherit;
   font-size: var(--text-md);
+  font-weight: 500;
   background: none;
   border: 0;
   cursor: pointer;
+  transition: opacity var(--dur-fast);
+}
+.back-link:active {
+  opacity: 0.6;
 }
 .page-title-row {
   display: flex;
@@ -158,14 +184,18 @@ a {
 }
 .page-title-row h1 {
   font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  font-weight: 750;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-  margin: 0;
+  font-size: var(--display-lg);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.015em;
+  line-height: 0.95;
+  margin: var(--space-1) 0 0;
+  font-feature-settings: normal;
+  /* Bebas sits high in its box; this keeps the cap height optically centred. */
+  padding-top: 0.08em;
 }
 .page-subtitle {
-  margin: var(--space-1) 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
@@ -185,13 +215,16 @@ a {
   z-index: 20;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  background: rgba(13, 19, 34, 0.94);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-top: 1px solid var(--color-border);
+  background: rgba(12, 18, 32, 0.84);
+  backdrop-filter: saturate(160%) blur(20px);
+  -webkit-backdrop-filter: saturate(160%) blur(20px);
+  box-shadow: 0 -1px 0 var(--color-hairline);
   padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+  /* Stays put while pages change underneath it (see the view transitions at the end). */
+  view-transition-name: tab-bar;
 }
 .tab {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -200,28 +233,60 @@ a {
   min-height: var(--bottom-nav-height);
   color: var(--color-text-faint);
   font: inherit;
-  font-size: 0.6875rem;
-  font-weight: 500;
+  font-size: var(--text-2xs);
+  font-weight: 550;
+  letter-spacing: 0.01em;
   text-decoration: none;
   background: none;
   border: 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  transition: color var(--dur-fast);
+}
+.tab > .icon,
+.tab-add-button {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.tab:active > .icon {
+  transform: scale(0.86);
 }
 .tab[aria-current='page'] {
   color: var(--color-accent);
 }
+/* A short brass bar above the current tab: position, not just colour, says where you are. */
+.tab[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 22px;
+  height: 3px;
+  margin-left: -11px;
+  border-radius: 0 0 3px 3px;
+  background: var(--color-accent);
+  animation: tab-mark var(--dur-med) var(--ease-out);
+}
+@keyframes tab-mark {
+  from {
+    transform: scaleX(0);
+  }
+}
 .tab-add-button {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
-  margin-top: -18px;
-  border-radius: 16px;
-  background: var(--color-accent);
+  width: 48px;
+  height: 48px;
+  margin-top: -20px;
+  border-radius: 17px;
+  background: linear-gradient(180deg, #f6cd73, var(--color-accent) 55%, var(--color-accent-strong));
   color: var(--color-accent-contrast);
-  box-shadow: 0 8px 20px -6px rgba(240, 191, 90, 0.55);
-  transition: transform 0.15s;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 0 4px var(--color-bg),
+    0 10px 22px -6px rgba(240, 191, 90, 0.5);
+}
+.tab-add:active .tab-add-button {
+  transform: scale(0.92);
 }
 .tab-add[aria-expanded='true'] .tab-add-button {
   transform: rotate(45deg);
@@ -236,7 +301,10 @@ a {
 .sheet-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(3, 6, 14, 0.65);
+  background: rgba(3, 6, 14, 0.62);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: fade-in var(--dur-med) var(--ease-out);
 }
 .sheet {
   position: absolute;
@@ -247,23 +315,42 @@ a {
   gap: var(--space-3);
   padding: var(--space-2) calc(var(--space-4) + var(--safe-right))
     calc(var(--space-5) + var(--safe-bottom)) calc(var(--space-4) + var(--safe-left));
-  background: var(--color-surface);
-  border-top: 1px solid var(--color-border-strong);
-  border-radius: 24px 24px 0 0;
-  animation: sheet-in 0.2s ease-out;
+  background: var(--surface-sheen), var(--color-surface);
+  border-radius: 28px 28px 0 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 -20px 50px -20px rgba(0, 0, 0, 0.8);
+  animation: sheet-in 340ms var(--ease-out);
 }
 @keyframes sheet-in {
   from {
-    transform: translateY(30%);
+    transform: translateY(100%);
+  }
+}
+@keyframes fade-in {
+  from {
     opacity: 0;
   }
 }
+/* The three actions follow the sheet up, one after another. */
+.sheet .action-list > li {
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
+}
+.sheet .action-list > li:nth-child(1) {
+  animation-delay: 60ms;
+}
+.sheet .action-list > li:nth-child(2) {
+  animation-delay: 100ms;
+}
+.sheet .action-list > li:nth-child(3) {
+  animation-delay: 140ms;
+}
 .sheet-grab {
   justify-self: center;
-  width: 40px;
+  width: 36px;
   height: 5px;
   border-radius: 3px;
-  background: var(--color-surface-3);
+  background: var(--color-border-strong);
 }
 .sheet-head {
   display: flex;
@@ -272,7 +359,13 @@ a {
 }
 .sheet-head h2 {
   margin: 0;
-  font-size: var(--text-lg);
+  font-family: var(--font-display);
+  font-size: var(--display-md);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  font-feature-settings: normal;
 }
 .icon-btn {
   display: grid;
@@ -284,6 +377,13 @@ a {
   background: var(--color-surface-2);
   color: var(--color-text-muted);
   cursor: pointer;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast);
+}
+.icon-btn:active {
+  transform: scale(0.92);
+  background: var(--color-surface-3);
 }
 .action-list {
   list-style: none;
@@ -299,10 +399,21 @@ a {
   align-items: center;
   min-height: 68px;
   padding: var(--space-3);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--color-surface-2);
+  box-shadow: inset 0 1px 0 var(--color-highlight);
   color: var(--color-text);
   text-decoration: none;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast);
+}
+.action-row:active {
+  transform: scale(0.98);
+  background: var(--color-surface-3);
+}
+.action-text strong {
+  font-weight: 600;
 }
 .action-row > .icon {
   color: var(--color-text-faint);
@@ -330,13 +441,14 @@ a {
   list-style: none;
   margin: 0;
   padding: 0;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--surface-sheen), var(--color-surface);
+  border: 1px solid var(--color-hairline);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
 }
 .nav-list li + li {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-hairline);
 }
 .nav-list a {
   display: grid;
@@ -347,6 +459,17 @@ a {
   padding: var(--space-2) var(--space-4);
   color: var(--color-text);
   text-decoration: none;
+  transition: background-color var(--dur-fast);
+}
+.nav-list a:active {
+  background: var(--color-surface-2);
+}
+.nav-list a:focus-visible {
+  outline-offset: -2px;
+  border-radius: var(--radius-lg);
+}
+.nav-list-text strong {
+  font-weight: 600;
 }
 .nav-list a > .icon {
   color: var(--color-text-faint);
@@ -386,22 +509,35 @@ a {
     height: 100vh;
     overflow-y: auto;
     padding: var(--space-5) var(--space-3);
-    background: #0d1324;
-    border-right: 1px solid var(--color-border);
+    background: linear-gradient(180deg, #0e1528, #0b1120);
+    border-right: 1px solid var(--color-hairline);
   }
   .sidebar .brand {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    font-weight: 700;
-    font-size: var(--text-lg);
+    gap: var(--space-3);
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 1.6rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    line-height: 1;
     padding: 0 var(--space-3) var(--space-4);
   }
   .brand-mark {
-    width: 26px;
-    height: 26px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, var(--color-accent), #c98500);
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    background:
+      radial-gradient(circle at 50% 50%, #0e1528 0 34%, transparent 36%),
+      conic-gradient(
+        var(--chart-1) 0 50%,
+        var(--chart-2) 0 70%,
+        var(--chart-3) 0 90%,
+        var(--chart-6) 0 95%,
+        var(--chart-5) 0
+      );
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   }
   .sidebar-group {
     display: grid;
@@ -423,6 +559,10 @@ a {
     color: var(--color-text-muted);
     text-decoration: none;
     border-radius: var(--radius-md);
+    font-weight: 500;
+    transition:
+      background-color var(--dur-fast),
+      color var(--dur-fast);
   }
   .sidebar a:hover {
     background: var(--color-surface-2);
@@ -431,6 +571,7 @@ a {
   .sidebar a[aria-current='page'] {
     background: var(--color-surface-2);
     color: var(--color-text);
+    box-shadow: inset 0 1px 0 var(--color-highlight);
   }
   .sidebar a[aria-current='page'] .icon {
     color: var(--color-accent);
@@ -474,11 +615,16 @@ a {
 }
 
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--surface-sheen), var(--color-surface);
+  border: 1px solid var(--color-hairline);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   padding: var(--space-4);
   min-width: 0;
+}
+/* Cards placed straight on a page (not in a grid) still get breathing room. */
+.main > .card {
+  margin-bottom: var(--space-3);
 }
 @media (min-width: 700px) {
   .card {
@@ -487,45 +633,58 @@ a {
 }
 .card-header {
   display: flex;
-  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
+  align-items: center;
 }
 .card-header h2,
 .card-header h3 {
   margin: 0;
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
+  font-size: var(--text-2xs);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-text-muted);
   font-weight: 650;
 }
-.card-header {
-  align-items: center;
-}
 .card-link {
   font-size: var(--text-sm);
+  font-weight: 550;
   text-decoration: none;
   white-space: nowrap;
 }
 
 .hero {
-  background: radial-gradient(120% 90% at 100% 0%, #1d2a4d 0%, var(--color-surface) 62%);
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(57, 135, 229, 0.16) 0%, rgba(57, 135, 229, 0) 60%),
+    var(--surface-sheen), var(--color-surface);
+  box-shadow: var(--shadow-raised);
 }
 .hero-label {
   color: var(--color-text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   margin: 0;
 }
+/* The headline figure. Sized to the card (container units), so long amounts still fit a phone. */
 .hero-amount {
   font-family: var(--font-display);
-  font-size: var(--text-hero);
-  font-weight: 750;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-  margin: var(--space-1) 0 var(--space-3);
+  font-size: clamp(2.5rem, 17cqi, 4.5rem);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 0.92;
+  margin: var(--space-2) 0 var(--space-3);
   font-variant-numeric: tabular-nums;
+  font-feature-settings: normal;
+  padding-top: 0.06em;
+  white-space: nowrap;
+}
+.hero-amount .num-cents {
+  font-size: 0.5em;
+  color: var(--color-text-muted);
+  margin-left: 0.04em;
 }
 .hero-sub {
   display: flex;
@@ -554,8 +713,10 @@ a {
 .xs {
   font-size: var(--text-xs);
 }
+/* Money: tabular figures so columns of amounts line up; never broken across lines. */
 .num {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum', 'cv11';
   white-space: nowrap;
 }
 .positive {
@@ -573,9 +734,11 @@ a {
   align-items: center;
   gap: 4px;
   padding: 1px 8px;
-  border-radius: 999px;
-  font-size: var(--text-xs);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-2xs);
   font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
   border: 1px solid var(--color-border-strong);
   color: var(--color-text-muted);
   white-space: nowrap;
@@ -615,13 +778,26 @@ a {
   border: 1px solid var(--color-border);
   background: var(--color-surface-2);
   margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  line-height: 1.45;
 }
 .alert:last-child {
   margin-bottom: 0;
 }
 .alert-icon {
   flex: none;
-  font-weight: 700;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  /* The symbol is drawn in the page colour on a disc of the tone colour. */
+  background: var(--color-text-muted);
+  color: var(--color-bg);
+  font-weight: 800;
+  font-size: var(--text-xs);
+  line-height: 1;
 }
 .alert p {
   margin: 0;
@@ -631,28 +807,28 @@ a {
   background: var(--color-warning-bg);
 }
 .alert-warning .alert-icon {
-  color: var(--color-warning);
+  background: var(--color-warning);
 }
 .alert-negative {
   border-color: rgba(248, 113, 113, 0.35);
   background: var(--color-negative-bg);
 }
 .alert-negative .alert-icon {
-  color: var(--color-negative);
+  background: var(--color-negative);
 }
 .alert-info {
   border-color: rgba(96, 165, 250, 0.35);
   background: var(--color-info-bg);
 }
 .alert-info .alert-icon {
-  color: var(--color-info);
+  background: var(--color-info);
 }
 .alert-success {
   border-color: rgba(74, 222, 128, 0.35);
   background: var(--color-positive-bg);
 }
 .alert-success .alert-icon {
-  color: var(--color-positive);
+  background: var(--color-positive);
 }
 
 /* Lists */
@@ -667,7 +843,7 @@ a {
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-hairline);
   min-width: 0;
 }
 .list > li:last-child {
@@ -697,6 +873,7 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 550;
 }
 .list .meta {
   font-size: var(--text-xs);
@@ -711,6 +888,46 @@ a {
   align-items: center;
   gap: var(--space-2);
   flex: none;
+}
+/* Activity: tick box | description and details | amount; buttons on their own line below. */
+.txn-list > li.with-actions {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-1) var(--space-3);
+}
+.txn-list > li.with-actions > :first-child {
+  margin-top: 2px;
+  justify-self: center;
+}
+.txn-list .title {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+.txn-list .end {
+  font-weight: 600;
+}
+.txn-list > li.with-actions > .btn-row {
+  grid-column: 2 / -1;
+  justify-content: flex-start;
+  margin-top: var(--space-1);
+}
+@media (min-width: 900px) {
+  .txn-list > li.with-actions {
+    grid-template-columns: 24px minmax(0, 1fr) auto auto;
+    align-items: center;
+  }
+  .txn-list > li.with-actions > :first-child {
+    margin-top: 0;
+  }
+  .txn-list > li.with-actions > .btn-row {
+    grid-column: auto;
+    margin-top: 0;
+  }
 }
 /* Rows with action buttons: actions wrap onto their own line on narrow screens. */
 .list > li.with-actions {
@@ -860,6 +1077,25 @@ textarea {
   padding: var(--space-2) var(--space-3);
   min-height: var(--touch-target);
   width: 100%;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition:
+    border-color var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-accent);
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(240, 191, 90, 0.28);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-faint);
 }
 input[type='checkbox'],
 input[type='radio'] {
@@ -868,6 +1104,13 @@ input[type='radio'] {
   min-height: 0;
   accent-color: var(--color-accent);
   flex: none;
+  box-shadow: none;
+}
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 input[aria-invalid='true'],
 select[aria-invalid='true'] {
@@ -910,9 +1153,19 @@ legend {
   cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
+  box-shadow: inset 0 1px 0 var(--color-highlight);
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast),
+    border-color var(--dur-fast);
+  -webkit-user-select: none;
+  user-select: none;
 }
 .btn:hover {
   background: var(--color-surface-3);
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -920,14 +1173,18 @@ legend {
 }
 .btn-primary:disabled {
   opacity: 1;
+  box-shadow: none;
   background: var(--color-surface-3);
   border-color: var(--color-surface-3);
   color: var(--color-text-faint);
 }
 .btn-primary {
-  background: var(--color-accent);
+  background: linear-gradient(180deg, #f5ca6e, var(--color-accent));
   border-color: var(--color-accent);
   color: var(--color-accent-contrast);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 6px 16px -8px rgba(240, 191, 90, 0.6);
 }
 .btn-primary:hover {
   background: var(--color-accent-strong);
@@ -948,11 +1205,24 @@ legend {
   background: transparent;
   border-color: transparent;
   color: var(--color-link);
+  box-shadow: none;
+}
+.btn-ghost:hover {
+  background: var(--color-accent-bg);
 }
 .btn-sm {
+  position: relative;
   min-height: 36px;
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-sm);
+  border-radius: 11px;
+}
+/* Small controls look compact but still take a 44px-tall tap. */
+.btn-sm::after,
+.segmented button::after {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
 }
 .btn-row {
   display: flex;
@@ -964,13 +1234,15 @@ legend {
 .segmented {
   display: inline-flex;
   max-width: 100%;
-  padding: 3px;
+  padding: 4px;
   gap: 2px;
   background: var(--color-surface-2);
   border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
   overflow-x: auto;
 }
 .segmented button {
+  position: relative;
   font: inherit;
   font-size: var(--text-sm);
   background: transparent;
@@ -986,15 +1258,20 @@ legend {
   background: var(--color-surface-3);
   color: var(--color-text);
   font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 /* Panels (inline forms that open on demand) */
 .panel {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
-  background: var(--color-surface-2);
+  background: var(--surface-sheen), var(--color-surface-2);
+  box-shadow: var(--shadow-card);
   padding: var(--space-4);
   margin-bottom: var(--space-4);
+  animation: rise var(--dur-med) var(--ease-out);
 }
 
 /* Tables (desktop) / cards (mobile) */
@@ -1010,12 +1287,21 @@ legend {
 .data-table td {
   text-align: left;
   padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-hairline);
   vertical-align: middle;
 }
 .data-table th {
   color: var(--color-text-muted);
   font-weight: 600;
+  white-space: nowrap;
+}
+.data-table thead th {
+  font-size: var(--text-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.data-table td.amount {
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .data-table td.amount,
@@ -1050,11 +1336,12 @@ legend {
 .empty-icon {
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  background: var(--color-surface-2);
-  color: var(--color-text-faint);
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--color-surface-3), var(--color-surface-2));
+  box-shadow: inset 0 1px 0 var(--color-highlight);
+  color: var(--color-text-muted);
 }
 .empty p {
   margin: 0;
@@ -1063,6 +1350,9 @@ legend {
 .empty h2,
 .empty h3 {
   color: var(--color-text);
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
 }
 
 .status-toast {
@@ -1073,6 +1363,20 @@ legend {
   z-index: 50;
   max-width: min(560px, calc(100vw - 2 * var(--space-4)));
   width: max-content;
+}
+.status-toast .alert {
+  margin: 0;
+  background: rgba(23, 32, 54, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-raised);
+  animation: toast-in var(--dur-slow) var(--ease-out);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
 }
 @media (min-width: 900px) {
   .status-toast {
@@ -1102,16 +1406,27 @@ legend {
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
-  background: rgba(5, 6, 9, 0.7);
+  background: rgba(3, 6, 14, 0.7);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: fade-in var(--dur-med) var(--ease-out);
 }
 .dialog {
   width: min(440px, 100%);
   display: grid;
   gap: var(--space-4);
-  background: var(--color-surface-2);
+  background: var(--surface-sheen), var(--color-surface-2);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-raised);
   padding: var(--space-5);
+  animation: pop-in var(--dur-med) var(--ease-out);
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 .dialog h2 {
   margin: 0;
@@ -1184,6 +1499,10 @@ legend {
   color: var(--color-text-muted);
   letter-spacing: 0;
 }
+/* While a headline figure counts up (see CountUp), keep its width steady. */
+.counting {
+  font-variant-numeric: tabular-nums;
+}
 
 /* ------------------------------------------------------------------ Charts */
 
@@ -1200,7 +1519,18 @@ legend {
   stroke: var(--chart-track);
 }
 .ring-value {
-  transition: stroke-dasharray 0.6s ease-out;
+  transition: stroke-dasharray 0.6s var(--ease-out);
+  /* Draws in from empty on first view: the dash grows to the length set on the element. */
+  animation: ring-draw 900ms var(--ease-out) 120ms backwards;
+}
+@keyframes ring-draw {
+  from {
+    stroke-dasharray: 0 100;
+  }
+}
+.donut-arc {
+  animation: ring-draw 700ms var(--ease-out) backwards;
+  animation-delay: calc(80ms + var(--i, 0) * 70ms);
 }
 .ring-center {
   position: absolute;
@@ -1212,18 +1542,29 @@ legend {
   line-height: 1.15;
 }
 .ring-figure {
-  font-weight: 700;
-  font-size: var(--text-md);
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.55rem;
+  letter-spacing: 0.02em;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: normal;
+  padding-top: 0.08em;
 }
 .ring-big {
   font-family: var(--font-display);
-  font-weight: 750;
-  font-size: 1.6rem;
-  letter-spacing: -0.02em;
+  font-weight: 400;
+  font-size: 2.4rem;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  font-feature-settings: normal;
+  padding-top: 0.08em;
 }
 .ring-caption {
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
+  font-weight: 550;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--color-text-muted);
 }
 .tone-positive {
@@ -1370,6 +1711,8 @@ legend {
   gap: 8px;
   flex: 1;
   min-width: 0;
+  /* On wide cards, keep each amount within reading distance of its label. */
+  max-width: 440px;
   font-size: var(--text-sm);
 }
 .chart-legend li {
@@ -1377,6 +1720,31 @@ legend {
   grid-template-columns: 10px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
+  min-height: 28px;
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
+}
+.chart-legend li:nth-child(1) {
+  animation-delay: 120ms;
+}
+.chart-legend li:nth-child(2) {
+  animation-delay: 165ms;
+}
+.chart-legend li:nth-child(3) {
+  animation-delay: 210ms;
+}
+.chart-legend li:nth-child(4) {
+  animation-delay: 255ms;
+}
+.chart-legend li:nth-child(5) {
+  animation-delay: 300ms;
+}
+.chart-legend li:nth-child(n + 6) {
+  animation-delay: 340ms;
+}
+.chart-legend .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
 }
 .chart-legend-label {
   overflow: hidden;
@@ -1387,9 +1755,13 @@ legend {
   color: var(--color-text-faint);
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
+  min-width: 3ch;
+  text-align: right;
 }
 .chart-legend-value {
-  color: var(--color-text-muted);
+  color: var(--color-text);
+  font-weight: 500;
+  text-align: right;
 }
 /* Cards are size containers, so charts adapt to the column they sit in, not just the screen. */
 .card {
@@ -1508,14 +1880,122 @@ legend {
   color: var(--color-warning);
 }
 
+/* ------------------------------------------------------------------ Loading skeleton */
+
+/* Waits a moment before showing, so a quick load doesn't flash placeholders. */
+.skeleton-page {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: calc(48px + var(--space-1));
+  animation: fade-in var(--dur-med) var(--ease-out) 180ms backwards;
+}
+.skeleton {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.045), transparent);
+  animation: shimmer 1.4s var(--ease-in-out) infinite;
+}
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+.skeleton-title {
+  width: 42%;
+  height: 34px;
+  border-radius: var(--radius-sm);
+}
+.skeleton-line {
+  width: 64%;
+  height: 14px;
+  margin-bottom: var(--space-2);
+  border-radius: 7px;
+}
+.skeleton-hero {
+  height: 220px;
+  border-radius: var(--radius-lg);
+}
+.skeleton-card {
+  height: 108px;
+  border-radius: var(--radius-lg);
+}
 @media (prefers-reduced-motion: reduce) {
-  .ring-value,
-  .sheet,
-  .tab-add-button,
-  .page-bar,
-  .page-bar-title {
-    transition: none;
-    animation: none;
+  .skeleton::after {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ Motion */
+
+/* Content rises into place when a page opens: cards first, then what's in them. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.main > :not(.status-toast, .page-header, .skeleton-page) {
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
+}
+.main > .page-header {
+  animation: fade-in var(--dur-med) var(--ease-out) backwards;
+}
+.main > :nth-child(2) {
+  animation-delay: calc(1 * var(--stagger));
+}
+.main > :nth-child(3) {
+  animation-delay: calc(2 * var(--stagger));
+}
+.main > :nth-child(4) {
+  animation-delay: calc(3 * var(--stagger));
+}
+.main > :nth-child(5) {
+  animation-delay: calc(4 * var(--stagger));
+}
+.main > :nth-child(n + 6) {
+  animation-delay: calc(5 * var(--stagger));
+}
+
+/* The five group cards follow one after another. */
+.group-grid > * {
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
+  animation-delay: calc(3 * var(--stagger) + var(--card-i, 0) * 40ms);
+}
+.group-grid > :nth-child(2) {
+  --card-i: 1;
+}
+.group-grid > :nth-child(3) {
+  --card-i: 2;
+}
+.group-grid > :nth-child(4) {
+  --card-i: 3;
+}
+.group-grid > :nth-child(5) {
+  --card-i: 4;
+}
+html[data-nav] .group-grid > * {
+  animation: none;
+}
+
+/* No movement for people who ask for less: everything appears in its final state at once. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -1631,8 +2111,12 @@ legend {
 }
 .onboarding h2 {
   font-family: var(--font-display);
-  font-size: var(--text-xl);
-  letter-spacing: -0.01em;
+  font-size: var(--display-md);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  font-feature-settings: normal;
 }
 @media (min-width: 700px) {
   .home-grid {
@@ -1718,8 +2202,12 @@ legend {
 }
 .step-heading {
   font-family: var(--font-display);
-  font-size: var(--text-xl);
-  letter-spacing: -0.01em;
+  font-size: var(--display-md);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  font-feature-settings: normal;
   margin: 0;
 }
 .step-heading:focus {
@@ -1934,7 +2422,7 @@ legend {
 }
 .filter-chips button {
   flex: none;
-  min-height: 38px;
+  min-height: var(--touch-target);
   padding: 0 var(--space-3);
   border-radius: 999px;
   border: 1px solid var(--color-border-strong);
@@ -2065,34 +2553,73 @@ legend {
 
 /* ------------------------------------------------------------------ Five groups (Home, group, categories) */
 
+/*
+ * Income / Spent / Left. On a phone they are rows of a small ledger (label left, amount right),
+ * so even seven-figure amounts never run into each other; side by side once the card is wide.
+ */
 .totals-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-3);
   margin: var(--space-3) 0 var(--space-4);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  background: rgba(10, 15, 28, 0.45);
+  box-shadow: inset 0 0 0 1px var(--color-hairline);
 }
 .totals-row > div {
-  display: grid;
-  gap: 2px;
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-2);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
   min-width: 0;
+  padding: var(--space-2) 0;
+  min-height: 40px;
+  align-content: center;
+}
+.totals-row > div + div {
+  border-top: 1px solid var(--color-hairline);
 }
 .totals-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--text-xs);
-  color: var(--color-text-faint);
+  font-weight: 550;
+  color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
 }
 .totals-row .num {
-  font-weight: 650;
+  font-weight: 600;
   font-size: var(--text-md);
-  overflow-wrap: anywhere;
+  min-width: 0;
+}
+@container (min-width: 600px) {
+  .totals-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 0;
+  }
+  .totals-row > div {
+    display: grid;
+    gap: 2px;
+    padding: var(--space-3) var(--space-4);
+  }
+  .totals-row > div + div {
+    border-top: 0;
+    border-left: 1px solid var(--color-hairline);
+  }
+  .totals-row .num {
+    font-size: var(--text-lg);
+  }
 }
 .section-title {
-  font-size: var(--text-lg);
-  margin: var(--space-5) 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--display-md);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  font-feature-settings: normal;
+  margin: var(--space-6) 0 var(--space-3);
 }
 .group-grid {
   display: grid;
@@ -2101,49 +2628,94 @@ legend {
   margin-bottom: var(--space-4);
 }
 .group-card {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-4);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  /* A soft glow of the group's colour behind its ring. */
+  background:
+    radial-gradient(
+      160px 140px at 0% 50%,
+      color-mix(in oklab, var(--group, var(--chart-other)) 16%, transparent),
+      transparent 70%
+    ),
+    var(--surface-sheen), var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  box-shadow: var(--shadow-card);
   color: inherit;
   text-decoration: none;
   min-height: 108px;
   transition:
-    border-color 120ms ease,
-    transform 120ms ease;
+    border-color var(--dur-fast),
+    transform var(--dur-fast) var(--ease-out);
+  -webkit-touch-callout: none;
 }
 .group-card:hover,
 .group-card:focus-visible {
   border-color: var(--color-border-strong);
 }
 .group-card:active {
-  transform: scale(0.99);
+  transform: scale(0.98);
 }
 .group-card[data-over] {
-  border-color: rgba(240, 98, 98, 0.45);
+  border-color: rgba(255, 123, 114, 0.5);
+}
+.group-card > .icon {
+  color: var(--color-text-faint);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.group-card:hover > .icon {
+  transform: translateX(2px);
 }
 .group-card-pct {
-  font-weight: 700;
-  font-size: var(--text-sm);
+  font-weight: 650;
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 .group-card-body {
   display: grid;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
 .group-card-title {
-  font-weight: 650;
-  font-size: var(--text-md);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--space-2);
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.625rem;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+  font-feature-settings: normal;
+  padding-top: 0.08em;
+}
+/* "· goal 50%" stays in Inter, quieter than the name. */
+.group-card-title .faint {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  font-feature-settings: 'cv11', 'ss01';
 }
 .group-card-hint {
   font-size: var(--text-xs);
   color: var(--color-text-faint);
 }
 .group-card-amounts {
+  margin-top: 2px;
   font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.group-card-amounts > .num:first-child {
+  color: var(--color-text);
+  font-weight: 600;
 }
 .group-card-left {
   font-size: var(--text-sm);
@@ -2152,41 +2724,122 @@ legend {
 .warning-text {
   color: var(--color-warning);
 }
+/* Each group's colour, for glows and accents (rings already use it). */
+.group-tone-0 {
+  --group: var(--chart-other);
+}
+.group-tone-1 {
+  --group: var(--chart-1);
+}
+.group-tone-2 {
+  --group: var(--chart-2);
+}
+.group-tone-3 {
+  --group: var(--chart-3);
+}
+.group-tone-4 {
+  --group: var(--chart-4);
+}
+.group-tone-5 {
+  --group: var(--chart-5);
+}
+.group-tone-6 {
+  --group: var(--chart-6);
+}
+
+/* Group page: the card you tapped grows into this hero (see the view transitions below). */
 .group-hero {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-5);
+  background:
+    radial-gradient(
+      120% 100% at 0% 0%,
+      color-mix(in oklab, var(--group, var(--chart-1)) 22%, transparent),
+      transparent 65%
+    ),
+    var(--surface-sheen), var(--color-surface);
+  view-transition-name: group-card;
+}
+.group-hero > .ring {
+  view-transition-name: group-ring;
+}
+/* (A media query: the hero is itself the card, and a container query can't query itself.) */
+@media (max-width: 459px) {
+  .group-hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-4);
+  }
+  .group-hero > .ring {
+    align-self: center;
+  }
 }
 .ring-small {
   display: block;
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
+  margin-top: 2px;
+  font-size: var(--text-2xs);
+  font-weight: 550;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
+/* Spent / Goal / Status as ledger rows: label left, amount right, so nothing collides. */
 .group-facts {
   display: grid;
-  gap: var(--space-3);
   margin: 0;
   flex: 1;
-  min-width: 180px;
+  min-width: 0;
+  max-width: 520px;
+}
+.group-facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2px var(--space-3);
+  padding: var(--space-2) 0;
+}
+.group-facts > div + div {
+  border-top: 1px solid var(--color-hairline);
 }
 .group-facts dt {
   font-size: var(--text-xs);
-  color: var(--color-text-faint);
+  font-weight: 550;
+  color: var(--color-text-muted);
 }
 .group-facts dd {
-  margin: 0;
-  font-weight: 650;
+  margin: 0 0 0 auto;
+  font-weight: 600;
+  text-align: right;
 }
 .select-sm {
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);
+  width: auto;
   max-width: 100%;
-  min-height: 36px;
-  padding: 4px 8px;
-  font-size: var(--text-sm);
+  min-height: var(--touch-target);
+  padding: 4px 34px 4px 12px;
+  font-size: max(16px, var(--text-sm));
+  border-radius: var(--radius-pill);
 }
 .txn-cat-list > li {
   align-items: flex-start;
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
+  animation-delay: 200ms;
+}
+.txn-cat-list > li:nth-child(1) {
+  animation-delay: 120ms;
+}
+.txn-cat-list > li:nth-child(2) {
+  animation-delay: 150ms;
+}
+.txn-cat-list > li:nth-child(3) {
+  animation-delay: 180ms;
+}
+.txn-cat-list > li > .num {
+  font-weight: 600;
+  padding-top: 1px;
 }
 .cat-list > li.cat-row {
   gap: var(--space-2);
@@ -2261,4 +2914,90 @@ legend {
 .input-with-action input {
   flex: 1;
   min-width: 0;
+}
+
+/* ------------------------------------------------------------------ View transitions */
+
+/*
+ * Opening a group (src/app/viewTransition.ts): the tapped card and its ring grow into the group
+ * page's hero while the rest of the page cross-fades and drifts a little in the direction of
+ * travel. Back runs it in reverse. Browsers without view transitions just get the page's own
+ * rise-in; under reduced motion there is no transition at all.
+ */
+::view-transition-group(group-card),
+::view-transition-group(group-ring) {
+  animation-duration: 420ms;
+  animation-timing-function: var(--ease-out);
+}
+/* The card's box grows and reveals the hero inside it, like a card unfolding. */
+::view-transition-group(group-card) {
+  overflow: clip;
+  border-radius: var(--radius-lg);
+}
+/* The card's own text fades out quickly and the hero's fades in a beat later, so the two
+   never sit on top of each other for long. */
+::view-transition-old(group-card) {
+  animation: vt-fade-out 140ms var(--ease-out) both;
+}
+::view-transition-new(group-card) {
+  animation: vt-fade-in 300ms var(--ease-out) 90ms both;
+}
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vt-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+::view-transition-old(root) {
+  animation: vt-out 200ms var(--ease-out) both;
+}
+::view-transition-new(root) {
+  animation: vt-in 320ms var(--ease-out) 60ms both;
+}
+html[data-nav='back']::view-transition-old(root) {
+  animation-name: vt-out-back;
+}
+html[data-nav='back']::view-transition-new(root) {
+  animation-name: vt-in-back;
+}
+::view-transition-group(tab-bar) {
+  animation: none;
+}
+::view-transition-old(tab-bar) {
+  display: none;
+}
+::view-transition-new(tab-bar) {
+  animation: none;
+}
+@keyframes vt-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+  }
+}
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes vt-out-back {
+  to {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes vt-in-back {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+/* During the transition the hero is already moving, so its own rise-in would fight it. */
+html[data-nav] .main > * {
+  animation: none;
 }
