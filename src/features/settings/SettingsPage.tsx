@@ -41,6 +41,7 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
   const [rate, setRate] = useState(String(s.savingsRatePercent));
   const [payday, setPayday] = useState(s.paydayDayOfMonth?.toString() ?? '');
   const [override, setOverride] = useState(s.nextPaydayOverride ?? '');
+  const [showOverride, setShowOverride] = useState(Boolean(s.nextPaydayOverride));
   const [mode, setMode] = useState(s.budgetPeriodMode);
   const [strict, setStrict] = useState(s.strictBudgetCap);
   const [reserve, setReserve] = useState(s.reservePlannedSavings);
@@ -82,6 +83,14 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
   };
   const nextPd = validPayday !== null ? nextPayday(today, pay) : null;
   const periodPreview = budgetPeriod(today, { ...pay, budgetPeriodMode: mode });
+  // What the period would be without the early-payday date, to point out when it moves the start.
+  const periodWithoutOverride = budgetPeriod(today, {
+    ...pay,
+    nextPaydayOverride: null,
+    budgetPeriodMode: mode,
+  });
+  const overrideMovesStart =
+    Boolean(override) && periodPreview.start !== periodWithoutOverride.start;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -218,18 +227,42 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
               placeholder="e.g. 25"
             />
           </Field>
-          <Field
-            label="Next payday override (optional)"
-            htmlFor="s-override"
-            hint="e.g. when salary is paid early before a weekend."
-          >
-            <input
-              id="s-override"
-              type="date"
-              value={override}
-              onChange={(e) => setOverride(e.target.value)}
-            />
-          </Field>
+          {showOverride || override ? (
+            <Field
+              label="Salary paid early on"
+              htmlFor="s-override"
+              hint="Only for a one-off early payday, e.g. before a weekend or public holiday."
+            >
+              <div className="input-with-action">
+                <input
+                  id="s-override"
+                  type="date"
+                  value={override}
+                  onChange={(e) => setOverride(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setOverride('');
+                    setShowOverride(false);
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            </Field>
+          ) : (
+            <div className="field">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm link-button"
+                onClick={() => setShowOverride(true)}
+              >
+                Salary coming early this month?
+              </button>
+            </div>
+          )}
           <Field label="Budget period" htmlFor="s-mode">
             <select
               id="s-mode"
@@ -246,6 +279,13 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
           <DateText date={periodPreview.end} />
           {mode === 'pay_period' && validPayday === null && ' (set a payday to use pay periods)'}
         </p>
+        {overrideMovesStart && (
+          <p className="small warning-text" role="status">
+            Because of the early payday on <DateText date={override} />, the period starts then
+            instead of <DateText date={periodWithoutOverride.start} />. If your salary didn’t arrive
+            early, remove it.
+          </p>
+        )}
         {mode === 'calendar_month' && validPayday !== null && (
           <p className="small muted">
             Choose <strong>Payday to payday</strong> to budget from one payday to the day before the
@@ -258,8 +298,9 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
         <p className="xs faint">
           A payday of 29–31 falls on the last day of shorter months. If salary arrives up to 10 days
           early or 5 days late, the new period starts on the day it arrives, provided it is
-          categorised as Salary or matched to your Salary recurring item. Use the override to plan
-          ahead for an early payday. Changing the period never deletes or changes any transactions.
+          categorised as Salary or matched to your Salary recurring item. Use “Salary coming early”
+          only to plan ahead for a known early payday. Changing the period never deletes or changes
+          any transactions.
         </p>
       </fieldset>
 
