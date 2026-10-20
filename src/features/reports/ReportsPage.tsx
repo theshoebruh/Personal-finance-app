@@ -5,7 +5,9 @@ import { spendingByCategory, summariseIncomeExpenses } from '@/domain/calculatio
 import { buildDashboard } from '@/domain/calculations/dashboard';
 import { categoryBreakdown } from '@/domain/calculations/breakdown';
 import { addMonths, endOfMonth, formatDisplayDate, startOfMonth } from '@/domain/dates';
-import { Card, Empty, Loading, WorkspaceSwitcher } from '@/components/ui';
+import { Card, Empty, Loading } from '@/components/ui';
+import { BUCKET_LABELS } from '@/domain/models';
+import { useBuckets } from '../home/useBuckets';
 import { PageHeader } from '@/components/PageHeader';
 import { BudgetBars, Donut, IncomeSpendingBars, type ChartColour } from '@/components/charts';
 import { lookup } from '../shared';
@@ -18,7 +20,10 @@ const monthLabel = new Intl.DateTimeFormat('en-ZA', {
 const monthShort = new Intl.DateTimeFormat('en-ZA', { month: 'short', timeZone: 'UTC' });
 
 export function ReportsPage() {
-  const { today, view, setView } = useApp();
+  const { today } = useApp();
+  // The simple layout has no separate business workspace: reports cover all accounts.
+  const view = 'combined' as const;
+  const buckets = useBuckets();
   const data = useFinanceData();
 
   const model = useMemo(
@@ -40,7 +45,7 @@ export function ReportsPage() {
     [data, today, view],
   );
 
-  if (!data || !model) return <Loading />;
+  if (!data || !model || !buckets) return <Loading />;
   const thisMonth = startOfMonth(today);
   // Oldest first, so the bars read left to right.
   const months = Array.from({ length: 6 }, (_, i) => addMonths(thisMonth, i - 5));
@@ -61,15 +66,11 @@ export function ReportsPage() {
     spendingByCategory(data.transactions, view, thisMonth, endOfMonth(thisMonth)),
     (id) => (id ? (cats.get(id)?.name ?? 'Unknown') : 'Uncategorised'),
   );
-  const lines = model.budgetOverview.lines;
+  const groupLines = buckets.summary.lines.filter((l) => l.bucket !== 'buffer');
 
   return (
     <>
-      <PageHeader
-        title="Reports"
-        subtitle="Actual posted transactions only"
-        actions={<WorkspaceSwitcher value={view} onChange={setView} />}
-      />
+      <PageHeader title="Reports" subtitle="Actual posted transactions only" />
       <div className="grid grid-2">
         <Card title="Income vs spending" className="span-all">
           <IncomeSpendingBars
@@ -102,32 +103,28 @@ export function ReportsPage() {
           )}
         </Card>
         <Card
-          title="Budget vs actual"
+          title="Groups vs goals"
           action={
-            <Link className="card-link" to="/budgets">
-              Budgets ›
+            <Link className="card-link" to="/categories">
+              Goals ›
             </Link>
           }
         >
           <p className="small muted">
-            This period: {formatDisplayDate(model.period.start)} –{' '}
-            {formatDisplayDate(model.period.end)}
+            This period: {formatDisplayDate(buckets.period.start)} –{' '}
+            {formatDisplayDate(buckets.period.end)}
           </p>
-          {lines.length === 0 ? (
-            <Empty title="No spending limits yet" icon="budgets">
-              <p className="small">
-                <Link to="/budgets">Set limits</Link> to compare them with what you spend.
-              </p>
-            </Empty>
+          {buckets.summary.incomeCents === 0 && buckets.summary.expenseCents === 0 ? (
+            <Empty title="Nothing recorded this period yet" icon="budgets" />
           ) : (
             <BudgetBars
-              label="Budget vs actual by category"
-              lines={lines.map((l) => ({
-                key: l.budgetId,
-                label: l.categoryName,
-                limitCents: l.limitCents,
-                spentCents: l.spentCents,
-                remainingCents: l.remainingCents,
+              label="Spending per group against its goal"
+              lines={groupLines.map((l) => ({
+                key: l.bucket,
+                label: `${BUCKET_LABELS[l.bucket]} (goal ${l.targetPercent}%)`,
+                limitCents: l.targetCents,
+                spentCents: l.actualCents,
+                remainingCents: l.leftCents,
               }))}
             />
           )}

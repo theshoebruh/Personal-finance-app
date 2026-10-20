@@ -35,7 +35,7 @@ async function expectAvailable(text: string) {
 describe('core flow', () => {
   it('shows onboarding on first launch', async () => {
     render(<App db={db} store={store} initialPath="/" />);
-    expect(await screen.findByText(/work out what is safe to spend/i)).toBeInTheDocument();
+    expect(await screen.findByText(/your money in five groups/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /explore with demo data/i })).toBeInTheDocument();
   });
 
@@ -60,7 +60,11 @@ describe('core flow', () => {
     tx.unmount();
 
     render(<App db={db} store={store} initialPath="/" />);
-    await expectAvailable('R 3 749,50');
+    // Home: no income yet, R1,250.50 spent without a category.
+    const hero = await screen.findByText('Left this period');
+    const card = hero.closest('section')!;
+    await waitFor(() => expect(card.querySelector('.hero-amount')).toHaveTextContent('1 250,50'));
+    expect(await screen.findByText(/of spending has no category yet/)).toBeInTheDocument();
   });
 
   it('validates the transaction form before saving', async () => {
@@ -105,7 +109,8 @@ describe('core flow', () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
-    render(<App db={db} store={store} initialPath="/" />);
+    // The detailed overview is hidden from the menus but still reachable.
+    render(<App db={db} store={store} initialPath="/overview" />);
     await expectAvailable('R 10 000,00');
 
     // Due today so it always falls inside the current window, whatever today is.

@@ -4,6 +4,7 @@ import { type Clock, DomainError, systemClock } from './common';
 import { createAccount } from './accountsService';
 import { createTransaction, createTransfer } from './transactionsService';
 import { addGoalContribution, saveGoal, saveRecurringRule } from './planningService';
+import { addSuggestedCategories } from './categoriesService';
 
 const DEMO_TABLES: StoreTableName[] = [
   'transactions',
@@ -35,6 +36,8 @@ export async function loadDemoData(
 ): Promise<void> {
   if (await hasDemoData(store)) throw new DomainError('Demo data is already loaded.');
   const opts = { isDemo: true, clock };
+  // Demo transactions use the suggested categories (Gym, Snacks, RF…); add any this device lacks.
+  await addSuggestedCategories(store, clock);
   const monthStart = startOfMonth(today);
   const { year, month } = parts(today);
   const day = (d: number): IsoDate => {
@@ -105,6 +108,14 @@ export async function loadDemoData(
     await tx('uber', 6, 'Uber', 9_500, 'expense', 'cat-transport');
     await tx('refund', 7, 'Checkers refund', 4_000, 'refund', 'cat-groceries');
     await tx('unknown', 8, 'Unknown card purchase', 12_000, 'expense', null);
+    await tx('petrol', 3, 'Engen fuel', 65_000, 'expense', 'cat-transport');
+    await tx('gym', 1, 'Virgin Active', 45_000, 'expense', 'cat-gym');
+    await tx('snacks', 4, 'Spar snacks', 6_500, 'expense', 'cat-snacks');
+    await tx('coffee', 6, 'Joe’s Barista', 5_000, 'expense', 'cat-coffee');
+    await tx('youtube', 2, 'YouTube Premium', 8_200, 'expense', 'cat-subscriptions');
+    await tx('padel', 7, 'Padel court booking', 30_000, 'expense', 'cat-sports');
+    await tx('prints', 5, 'Print shop – stickers', 23_200, 'expense', 'cat-rf-stock');
+    await tx('stock-art', 6, 'Stock graphics licence', 12_000, 'expense', 'cat-rf-design');
     const [, savingsLeg] = await createTransfer(
       store,
       { fromAccountId: main.id, toAccountId: savings.id, date: day(2), amountCents: 100_000 },

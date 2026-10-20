@@ -30,7 +30,11 @@ function input(overrides: Partial<AvailableToSpendInput> = {}): AvailableToSpend
     today,
     view: 'personal',
     // Simple baseline: payday on the 25th, no savings reservation, no budget cap.
-    settings: makeSettings({ paydayDayOfMonth: 25, reservePlannedSavings: false }),
+    settings: makeSettings({
+      paydayDayOfMonth: 25,
+      reservePlannedSavings: false,
+      budgetPeriodMode: 'calendar_month',
+    }),
     accounts: [main, savingsAcc],
     transactions: [],
     recurringRules: [],
