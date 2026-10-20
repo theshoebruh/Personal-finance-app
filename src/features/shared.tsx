@@ -3,10 +3,26 @@ import {
   CATEGORY_GROUP_LABELS,
   type Account,
   type Category,
+  type Transaction,
   type Workspace,
 } from '@/domain/models';
 
 /** Category <option>s grouped by budget group, limited to a workspace when given. */
+/**
+ * Whether a category can be given to a transaction: same kind (income vs spending) and usable on
+ * the transaction's account (business-only categories don't fit personal accounts). Mirrors the
+ * check the service does on save.
+ */
+export function categoryFits(cat: Category, t: Pick<Transaction, 'type' | 'workspace'>): boolean {
+  const kind =
+    t.type === 'income' ? 'income' : t.type === 'expense' || t.type === 'refund' ? 'expense' : null;
+  return (
+    kind !== null &&
+    cat.kind === kind &&
+    (cat.workspace === 'both' || cat.workspace === t.workspace)
+  );
+}
+
 export function CategoryOptions({
   categories,
   workspace,

@@ -125,7 +125,7 @@ describe('transactions', () => {
         type: 'expense',
         categoryId: 'cat-biz-software',
       }),
-    ).rejects.toThrow(/not a personal category/);
+    ).rejects.toThrow(/only for business accounts/);
     const edited = await updateTransaction(store, t.id, {
       amountCents: 50_000,
       description: 'Groceries (Checkers)',
@@ -220,6 +220,7 @@ describe('transactions', () => {
     expect(await bulkSetCategory(store, [a.id, b.id], 'cat-shopping')).toEqual({
       updated: 2,
       skipped: 0,
+      reasons: [],
     });
     const updated = await store.transactions.get(a.id);
     expect(updated?.categoryId).toBe('cat-shopping');

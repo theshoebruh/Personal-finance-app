@@ -187,6 +187,7 @@ describe('CSV import', () => {
     expect(await bulkSetCategory(store, [salary!.id], 'cat-salary')).toEqual({
       updated: 1,
       skipped: 0,
+      reasons: [],
     });
     expect(await editedSinceImport(store, result.batch.id)).toBe(1);
     expect(await undoImport(store, result.batch.id)).toBe(4);

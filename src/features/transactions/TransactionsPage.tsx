@@ -21,7 +21,7 @@ import {
 } from '@/services/transactionsService';
 import { Badge, Card, DateText, Empty, Loading, Money, useStatus } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
-import { AccountOptions, CategoryOptions, lookup } from '../shared';
+import { AccountOptions, CategoryOptions, categoryFits, lookup } from '../shared';
 import { ConvertToTransferPanel, TransactionForm, TransferForm } from './TransactionForms';
 import { unlinkPayment } from '@/services/planningService';
 
@@ -112,6 +112,14 @@ export function TransactionsPage() {
   const visible = filtered.slice(0, limit);
   const selectable = visible.filter((t) => t.type !== 'transfer');
   const allSelected = selectable.length > 0 && selectable.every((t) => selected.has(t.id));
+  // Only offer categories every selected transaction can take (income vs spending, and no
+  // business-only categories for personal accounts).
+  const selectedTxns = data.transactions.filter((t) => selected.has(t.id));
+  const bulkCategories = data.categories.filter((c) =>
+    selectedTxns.every((t) => categoryFits(c, t)),
+  );
+  const mixedSelection =
+    selectedTxns.some((t) => t.type === 'income') && selectedTxns.some((t) => t.type !== 'income');
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -379,18 +387,21 @@ export function TransactionsPage() {
               >
                 <option value="">Choose category…</option>
                 <option value="__none">Uncategorised</option>
-                <CategoryOptions
-                  categories={data.categories}
-                  workspace={view === 'combined' ? undefined : view}
-                />
+                <CategoryOptions categories={bulkCategories} />
               </select>
+              {mixedSelection && (
+                <span className="xs faint">
+                  You’ve selected income and spending together; select only one kind to choose a
+                  category.
+                </span>
+              )}
               <button
                 type="button"
                 className="btn btn-sm btn-primary"
                 disabled={!bulkCategory}
                 onClick={() =>
                   void run(async () => {
-                    const { updated, skipped } = await bulkSetCategory(
+                    const { updated, skipped, reasons } = await bulkSetCategory(
                       store,
                       [...selected],
                       bulkCategory === '__none' ? null : bulkCategory,
@@ -402,7 +413,7 @@ export function TransactionsPage() {
                       text:
                         `Updated ${updated} transaction${updated === 1 ? '' : 's'}` +
                         (skipped > 0
-                          ? `. ${skipped} skipped: that category doesn’t fit them (e.g. income needs an income category).`
+                          ? `. ${skipped} skipped: ${reasons.join('; ') || 'that category can’t be used for them'}.`
                           : ''),
                     });
                   })

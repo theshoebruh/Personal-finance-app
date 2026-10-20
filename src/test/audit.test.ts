@@ -526,6 +526,7 @@ describe('F-06 category kind (fixed)', () => {
     expect(await bulkSetCategory(store, [income.id, spend.id], 'cat-groceries')).toEqual({
       updated: 1,
       skipped: 1,
+      reasons: ['“Groceries” is a spending category; choose an income category for income'],
     });
     expect((await store.transactions.get(income.id))?.categoryId).toBe('cat-salary');
     expect((await store.transactions.get(spend.id))?.categoryId).toBe('cat-groceries');
