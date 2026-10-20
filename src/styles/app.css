@@ -2253,3 +2253,12 @@ legend {
   cursor: pointer;
   min-height: 44px;
 }
+.input-with-action {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.input-with-action input {
+  flex: 1;
+  min-width: 0;
+}
