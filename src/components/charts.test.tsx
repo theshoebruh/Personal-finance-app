@@ -1,6 +1,14 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BudgetBars, Donut, IncomeSpendingBars, Ring, fraction, percentLabel } from './charts';
+import {
+  BudgetBars,
+  Donut,
+  IncomeSpendingBars,
+  Ring,
+  fraction,
+  percentLabel,
+  shadeOf,
+} from './charts';
 
 /** Normalise the narrow no-break spaces Intl uses in en-ZA currency. */
 const text = (el: Element | null) => (el?.textContent ?? '').replace(/\s/g, ' ');
@@ -163,5 +171,33 @@ describe('BudgetBars', () => {
     expect(
       screen.getByRole('meter', { name: /Eating out: R\s950,00 spent of R\s800,00/ }),
     ).toBeInTheDocument();
+  });
+});
+
+describe('group shades', () => {
+  it('starts with the group colour, then alternates lighter and darker', () => {
+    expect(shadeOf(2, 0)).toBe('var(--chart-2)');
+    expect(shadeOf(2, 1)).toContain('white 28%');
+    expect(shadeOf(2, 2)).toContain('var(--color-bg) 28%');
+    expect(shadeOf(2, 3)).toContain('white 48%');
+    expect(new Set([0, 1, 2, 3, 4, 5, 6].map((i) => shadeOf(2, i))).size).toBe(7);
+  });
+
+  it('colours each slice and its legend swatch with the given shade', () => {
+    const { container } = render(
+      <Donut
+        label="Wants by category"
+        centreLabel="spent"
+        totalCents={300}
+        segments={[
+          { key: 'a', label: 'Sports', cents: 200, colour: 2, tint: shadeOf(2, 0) },
+          { key: 'b', label: 'Snacks', cents: 100, colour: 2, tint: shadeOf(2, 1) },
+        ]}
+      />,
+    );
+    const arcs = [...container.querySelectorAll<SVGCircleElement>('.donut-arc')];
+    const swatches = [...container.querySelectorAll<HTMLElement>('.swatch')];
+    expect(arcs.map((a) => a.style.stroke)).toEqual(swatches.map((s) => s.style.background));
+    expect(arcs[0]!.style.stroke).toBe('var(--chart-2)');
   });
 });
