@@ -41,6 +41,12 @@ export const columnMappingSchema = z
      */
     categoryColumn: z.number().int().min(0).nullable().optional(),
     parentCategoryColumn: z.number().int().min(0).nullable().optional(),
+    /**
+     * Optional "Transaction Date" column when the main date is the posting date (e.g. Capitec). Its
+     * text (often with a time) stays the same when a pending card purchase later posts, so it is
+     * used to recognise the posted version. Missing in older saved mappings, meaning "not used".
+     */
+    transactionDateColumn: z.number().int().min(0).nullable().optional(),
     /** Bank transaction ID / reference, used to tell identical same-day transactions apart. */
     referenceColumn: z.number().int().min(0).nullable(),
     balanceColumn: z.number().int().min(0).nullable(),
@@ -162,8 +168,18 @@ export interface NormalisedRow {
   splitFee?: boolean;
   /** The bank's own category names for this line, most specific first (may be empty). */
   bankCategories?: string[];
+  /**
+   * Not final yet at the bank: marked "(Pending)" in the description, or without a running balance
+   * when the other lines have one. Imported as pending (not in the posted balance).
+   */
+  pending?: boolean;
+  /** The bank's transaction date/time text (see `transactionDateColumn`), or null. */
+  transactionAt?: string | null;
   errors: string[];
 }
+
+/** "(Pending) " at the start of a description, as some banks show card purchases not yet final. */
+const PENDING_PREFIX = /^\s*\(\s*pending\s*\)\s*[:-]?\s*/i;
 
 /**
  * Turn raw rows into normalised candidates. Never guesses: a row with an unreadable date or amount
@@ -198,10 +214,12 @@ export function normaliseRows(
     const parts = [raw[mapping.descriptionColumn] ?? ''];
     if (mapping.extraDescriptionColumn !== null)
       parts.push(raw[mapping.extraDescriptionColumn] ?? '');
-    const description = parts
+    const joined = parts
       .map((p) => p.trim())
       .filter(Boolean)
       .join(' · ');
+    const markedPending = PENDING_PREFIX.test(joined);
+    const description = joined.replace(PENDING_PREFIX, '');
     if (!description) errors.push('Missing description');
 
     // Fees are always money out, whatever sign the bank uses; a zero fee means no fee.
@@ -262,6 +280,8 @@ export function normaliseRows(
       const b = amountCell(raw[mapping.balanceColumn]);
       balance = b.cents;
     }
+    const tdColumn = mapping.transactionDateColumn ?? null;
+    const transactionAt = tdColumn !== null ? (raw[tdColumn] ?? '').trim() || null : null;
     const bankCategories = [mapping.categoryColumn, mapping.parentCategoryColumn]
       .map((c) => (c != null ? (raw[c] ?? '').trim() : ''))
       .filter(Boolean);
@@ -275,9 +295,19 @@ export function normaliseRows(
       reference,
       balanceCents: balance,
       feeCents,
+      pending: markedPending,
+      transactionAt,
       errors,
     };
   });
+  // A line without a running balance when (nearly) all the others have one hasn't settled yet.
+  if (mapping.balanceColumn !== null) {
+    const valid = out.filter((r) => r.errors.length === 0);
+    const withBalance = valid.filter((r) => r.balanceCents !== null).length;
+    if (valid.length >= 3 && withBalance >= (valid.length - 1) * 0.8) {
+      for (const r of valid) if (r.balanceCents === null) r.pending = true;
+    }
+  }
   return { rows: out, dateFormatUsed: format, dateFormatAmbiguous: ambiguous };
 }
 
@@ -291,6 +321,7 @@ const HEADER_HINTS: Record<string, RegExp> = {
   category: /^(category|sub[- ]?category|transaction category|spending category)$/i,
   parentCategory: /^(parent category|main category|category group)$/i,
   reference: /^(ref|reference|transaction id|id|cheque|statement ref)/i,
+  transactionDate: /^trans(action|\.)? ?date( ?(and|&) ?time)?$|^transaction time$/i,
   balance: /balance/i,
 };
 
@@ -320,6 +351,7 @@ export function guessMapping(rows: readonly string[][]): ColumnMapping {
       feeColumn: null,
       categoryColumn: null,
       parentCategoryColumn: null,
+      transactionDateColumn: null,
       referenceColumn: null,
       balanceColumn: header.length > 3 ? 3 : null,
       dateFormat: 'auto',
@@ -343,6 +375,7 @@ export function guessMapping(rows: readonly string[][]): ColumnMapping {
   const reference = find('reference', [date, description ?? -1]);
   const category = find('category', used);
   const parentCategory = find('parentCategory', used);
+  const transactionDate = find('transactionDate', [date]);
   const signed = amount !== null || (debit === null && credit === null);
   return {
     hasHeader: true,
@@ -356,6 +389,7 @@ export function guessMapping(rows: readonly string[][]): ColumnMapping {
     feeColumn: fee,
     categoryColumn: category,
     parentCategoryColumn: parentCategory,
+    transactionDateColumn: transactionDate,
     referenceColumn: reference,
     balanceColumn: balance,
     dateFormat: 'auto',

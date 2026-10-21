@@ -256,6 +256,12 @@ export function HomePage() {
         )}
       </Card>
 
+      {summary.pendingOutCents > 0 && (
+        <p className="small muted pending-note">
+          <Money cents={summary.pendingOutCents} /> more is pending at your bank and isn’t counted
+          until it clears.
+        </p>
+      )}
       {summary.uncategorisedCents > 0 && (
         <Alert
           tone="warning"

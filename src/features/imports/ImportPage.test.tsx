@@ -238,3 +238,32 @@ it('explains where fees come from and marks fees split off a purchase', async ()
     await screen.findByRole('heading', { name: 'Imported 3 transactions' }),
   ).toBeInTheDocument();
 });
+
+it('shows a pending purchase that has since posted, and can import it separately', async () => {
+  const user = userEvent.setup({ delay: null });
+  // Made-up rows in Capitec's layout.
+  const header = 'Posting Date,Transaction Date,Description,Money In,Money Out,Fee,Balance';
+  const first = [
+    header,
+    '2026-03-01,2026-03-01 08:00,Salary,5000.00,,,5000.00',
+    '2026-03-02,2026-03-02 12:00,Corner shop,,-100.00,,4900.00',
+    '2026-03-03,2026-03-03 16:34,(Pending) Game Store Waterfr,,-165.00,,',
+  ].join('\n');
+  const second = [header, '2026-03-05,2026-03-03 16:34,Game Store Waterf,,-165.00,,4735.00'].join(
+    '\n',
+  );
+  const { unmount } = render(<App db={db} store={store} initialPath="/import" />);
+  const review1 = await goToReview(user, new File([first], 'first.csv', { type: 'text/csv' }));
+  expect(within(review1).getByText('Pending')).toBeInTheDocument();
+  await user.click(within(review1).getByRole('button', { name: 'Import 3 transactions' }));
+  expect(await screen.findByText(/1 still pending at your bank/)).toBeInTheDocument();
+  unmount();
+
+  render(<App db={db} store={store} initialPath="/import" />);
+  const review2 = await goToReview(user, new File([second], 'second.csv', { type: 'text/csv' }));
+  expect(within(review2).getByText('Now posted')).toBeInTheDocument();
+  expect(within(review2).getByText(/updates it instead of adding it twice/)).toBeInTheDocument();
+  await user.click(within(review2).getByRole('button', { name: 'It’s a different transaction' }));
+  expect(within(review2).queryByText('Now posted')).not.toBeInTheDocument();
+  expect(within(review2).getByText('New')).toBeInTheDocument();
+});

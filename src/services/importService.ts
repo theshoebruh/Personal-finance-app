@@ -13,6 +13,7 @@ import {
   headerSignature,
   parseCsv,
   parseXlsx,
+  transactionTimeTag,
 } from '@/domain/imports';
 import type { FinanceStore } from '@/data/repositories/types';
 import { type Clock, DomainError, newId, systemClock } from './common';
@@ -100,7 +101,12 @@ export async function prepareImport(
     // respected.
     if (mapping.hasHeader) {
       const guess = guessMapping(parsed.rows);
-      for (const key of ['feeColumn', 'categoryColumn', 'parentCategoryColumn'] as const) {
+      for (const key of [
+        'feeColumn',
+        'categoryColumn',
+        'parentCategoryColumn',
+        'transactionDateColumn',
+      ] as const) {
         if (mapping[key] === undefined) mapping = { ...mapping, [key]: guess[key] ?? null };
       }
     }
@@ -156,7 +162,19 @@ export interface CommitResult {
   categorised: number;
   /** Rows imported as transfers between your own accounts. */
   transfers: number;
+  /** Pending transactions from an earlier import that this statement's posted rows updated. */
+  postedPending: number;
+  /** Rows imported as pending (not final at the bank yet). */
+  pending: number;
+  /** Transactions left in "Needs review" for a category. */
+  needsReview: number;
 }
+
+/** Tags on a pending transaction that an import posted, so undoing that import can revert it. */
+function postedByTag(batchId: string): string {
+  return `pp:${batchId}`.slice(0, 40);
+}
+const PREVIOUS_DATE_TAG = 'pd:';
 
 /**
  * Write the selected rows as transactions in one atomic step, with an import batch for history and
@@ -172,11 +190,23 @@ export async function commitImport(
   if (prepared.staging.mappingErrors.length > 0)
     throw new DomainError(prepared.staging.mappingErrors[0]!);
   const account = await requireActiveAccount(store, prepared.account.id);
-  const selected = input.rows.filter((r) => r.include && r.status !== 'invalid');
-  if (selected.length === 0) throw new DomainError('No rows are selected for import.');
+  const included = input.rows.filter((r) => r.include && r.status !== 'invalid');
+  // Posted versions of earlier pending transactions update those instead of adding new ones.
+  const posting: { row: StagedRow; pending: Transaction }[] = [];
+  const selected: StagedRow[] = [];
+  for (const r of included) {
+    const t =
+      r.status === 'posts_pending' && r.pendingMatch
+        ? await store.transactions.get(r.pendingMatch.transactionId)
+        : undefined;
+    // If the pending transaction was removed or changed since staging, import the row as new.
+    if (t && !t.archived && t.amountCents === r.amountCents) posting.push({ row: r, pending: t });
+    else selected.push(r);
+  }
+  if (included.length === 0) throw new DomainError('No rows are selected for import.');
   const now = clock.now();
   const batchId = newId();
-  const dates = selected.map((r) => r.date!).sort();
+  const dates = included.map((r) => r.date!).sort();
   const categories = new Map((await store.categories.list()).map((c) => [c.id, c]));
   /** The row's suggested or chosen category, if it (still) fits this account and amount. */
   const categoryFor = (r: StagedRow) =>
@@ -194,13 +224,14 @@ export async function commitImport(
     type: r.amountCents! > 0 ? 'income' : 'expense',
     categoryId: categoryFor(r),
     workspace: account.workspace,
-    // Categorised rows are done; the rest wait in "Needs review" for a category.
-    status: categoryFor(r) ? 'posted' : 'needs_review',
+    // Not final at the bank yet: pending (outside the posted balance). Otherwise categorised rows
+    // are done and the rest wait in "Needs review" for a category.
+    status: r.pending ? 'pending' : categoryFor(r) ? 'posted' : 'needs_review',
     source: 'csv',
     importBatchId: batchId,
     fingerprint: r.fingerprint!,
     ...(r.reference ? { notes: `Bank reference: ${r.reference}`.slice(0, 1000) } : {}),
-    tags: [],
+    tags: r.transactionAt ? [transactionTimeTag(r.transactionAt)] : [],
     archived: false,
     // Imports into a demo account are demo data too, so "Clear demo data" can remove them.
     isDemo: account.isDemo,
@@ -264,6 +295,29 @@ export async function commitImport(
     }
   }
 
+  // A pending transaction has posted: bring it up to date in place (undo reverts it to pending).
+  const postedTag = postedByTag(batchId);
+  const postedUpdates: Transaction[] = [];
+  for (const { row: r, pending: t } of posting) {
+    const categoryId = t.categoryId ?? categoryFor(r);
+    const tags = t.tags.filter((g) => !g.startsWith(PREVIOUS_DATE_TAG) && !g.startsWith('pp:'));
+    if (r.transactionAt && !tags.includes(transactionTimeTag(r.transactionAt))) {
+      tags.push(transactionTimeTag(r.transactionAt));
+    }
+    tags.push(postedTag, `${PREVIOUS_DATE_TAG}${t.date}`);
+    postedUpdates.push({
+      ...t,
+      date: r.date!,
+      description: r.description.slice(0, 200),
+      originalDescription: r.raw.join(' | ').slice(0, 500),
+      categoryId,
+      status: categoryId ? 'posted' : 'needs_review',
+      fingerprint: r.fingerprint!,
+      tags: tags.slice(-20),
+      updatedAt: now,
+    });
+  }
+
   const batch: ImportBatch = {
     id: batchId,
     accountId: account.id,
@@ -283,7 +337,7 @@ export async function commitImport(
 
   await store.atomic(async () => {
     await store.importBatches.put(batch);
-    await store.transactions.bulkPut([...transactions, ...extraWrites]);
+    await store.transactions.bulkPut([...transactions, ...extraWrites, ...postedUpdates]);
     if (input.saveMapping) {
       const existing = await store.importProfiles.get(account.id);
       await store.importProfiles.put({
@@ -313,6 +367,10 @@ export async function commitImport(
     created: transactions.length,
     categorised: transactions.filter((t) => t.type !== 'transfer' && t.categoryId).length,
     transfers: transferCount,
+    postedPending: postedUpdates.length,
+    pending: transactions.filter((t) => t.status === 'pending').length,
+    needsReview: [...transactions, ...postedUpdates].filter((t) => t.status === 'needs_review')
+      .length,
   };
 }
 
@@ -347,10 +405,26 @@ export async function undoImport(
     // Transactions this import turned into transfer legs go back to ordinary income/expense
     // (uncategorised, marked for review).
     const tag = convertedByTag(batchId);
-    const converted = (await store.transactions.list()).filter((t) => t.tags.includes(tag));
+    const all = await store.transactions.list();
+    const converted = all.filter((t) => t.tags.includes(tag));
     if (converted.length > 0) {
       await store.transactions.bulkPut(converted.map((t) => revertTransferLeg(t, now, tag)));
     }
+    // Pending transactions this import marked as posted go back to pending, on their old date.
+    const posted = postedByTag(batchId);
+    const reverted = all
+      .filter((t) => t.tags.includes(posted))
+      .map((t) => {
+        const previous = t.tags.find((g) => g.startsWith(PREVIOUS_DATE_TAG))?.slice(3);
+        return {
+          ...t,
+          status: 'pending' as const,
+          ...(previous ? { date: previous } : {}),
+          tags: t.tags.filter((g) => g !== posted && !g.startsWith(PREVIOUS_DATE_TAG)),
+          updatedAt: now,
+        };
+      });
+    if (reverted.length > 0) await store.transactions.bulkPut(reverted);
     await store.importBatches.put({ ...batch, status: 'undone', undoneAt: now, updatedAt: now });
   });
   return removed;
