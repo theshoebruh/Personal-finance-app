@@ -6,14 +6,30 @@ import type { Cents } from '../money';
 import { normaliseText } from '../calculations/recurring';
 import type { NormalisedRow } from './normalise';
 
-export type StagedStatus = 'new' | 'duplicate' | 'possible_duplicate' | 'invalid';
+export type StagedStatus =
+  | 'new'
+  /** The posted version of a pending transaction imported earlier: updates it instead. */
+  | 'posts_pending'
+  | 'duplicate'
+  | 'possible_duplicate'
+  | 'invalid';
 
 export interface DuplicateMatch {
   transactionId: string;
   description: string;
   date: IsoDate;
   amountCents: Cents;
-  reason: 'same_fingerprint' | 'manual_entry_match';
+  reason: 'same_fingerprint' | 'manual_entry_match' | 'same_transaction';
+}
+
+/** The pending transaction a posted row will update. */
+export interface PendingMatch {
+  transactionId: string;
+  description: string;
+  date: IsoDate;
+  amountCents: Cents;
+  /** "time": same bank transaction date/time; "similar": same amount, close date, similar name. */
+  basis: 'time' | 'similar';
 }
 
 export interface StagedRow extends NormalisedRow {
@@ -23,6 +39,7 @@ export interface StagedRow extends NormalisedRow {
   /** Default decision; the user can change it for any valid row. */
   include: boolean;
   duplicateOf?: DuplicateMatch;
+  pendingMatch?: PendingMatch;
   /** Other lines in this file that look identical (e.g. two same-day coffees). Kept, but flagged. */
   identicalLines: number[];
   /** Why this row may be a transfer between your own accounts (see transfers.ts). */
@@ -36,6 +53,36 @@ export interface StagedRow extends NormalisedRow {
 
 /** Days either side within which a manually entered transaction is treated as a possible match. */
 export const MANUAL_MATCH_WINDOW_DAYS = 3;
+
+/** How long after a pending card purchase its posted version may appear. */
+export const PENDING_POST_WINDOW_DAYS = 10;
+
+/**
+ * Tag recording the bank's transaction date/time text on an imported transaction, so a later
+ * statement's posted version of a pending purchase can be recognised (tags aren't shown in the UI).
+ */
+export function transactionTimeTag(transactionAt: string): string {
+  return `pt:${transactionAt}`.slice(0, 40);
+}
+
+/** Pending, or imported as "(Pending) …" by a version of the app that didn't know about pending. */
+export function isPendingLike(t: Transaction): boolean {
+  return t.status === 'pending' || /^\s*\(\s*pending\s*\)/i.test(t.description);
+}
+
+/** Loose name match for a pending vs posted description (banks often shorten or tweak it). */
+export function similarDescriptions(a: string, b: string): boolean {
+  const clean = (s: string) =>
+    normaliseText(s.replace(/^\s*\(\s*pending\s*\)/i, '').replace(/\(card \d{4}\)/i, ''));
+  const x = clean(a);
+  const y = clean(b);
+  if (!x || !y) return false;
+  if (x.slice(0, 12) === y.slice(0, 12)) return true;
+  const tx = new Set(x.split(' ').filter((w) => w.length > 2));
+  const ty = new Set(y.split(' ').filter((w) => w.length > 2));
+  const shared = [...tx].filter((w) => ty.has(w)).length;
+  return shared > 0 && shared / Math.max(1, Math.min(tx.size, ty.size)) >= 0.6;
+}
 
 /**
  * Duplicate fingerprint: account, date, amount, normalised description and — when the bank supplies
@@ -90,6 +137,16 @@ export function stageRows(
     byFingerprint.set(fp, list);
   }
   const manual = inAccount.filter((t) => t.source === 'manual' && !t.fingerprint);
+  const byTimeTag = new Map<string, Transaction[]>();
+  for (const t of inAccount) {
+    for (const tag of t.tags) {
+      if (!tag.startsWith('pt:')) continue;
+      const list = byTimeTag.get(tag) ?? [];
+      list.push(t);
+      byTimeTag.set(tag, list);
+    }
+  }
+  const pendingLike = inAccount.filter(isPendingLike);
   const consumed = new Set<string>();
 
   const staged: StagedRow[] = rows.map((r, index) => {
@@ -129,6 +186,52 @@ export function stageRows(
         },
         identicalLines: [],
       };
+    }
+    // Same bank transaction (same date/time text and amount) seen in an earlier statement.
+    const sameTime = r.transactionAt
+      ? byTimeTag
+          .get(transactionTimeTag(r.transactionAt))
+          ?.find((t) => !consumed.has(t.id) && t.amountCents === r.amountCents)
+      : undefined;
+    if (sameTime) {
+      consumed.add(sameTime.id);
+      if (!r.pending && isPendingLike(sameTime)) {
+        return postsPending(r, index, fp, sameTime, 'time');
+      }
+      // Already recorded (still pending, or already posted): nothing new to import.
+      return {
+        ...r,
+        index,
+        status: 'duplicate',
+        fingerprint: fp,
+        include: false,
+        duplicateOf: {
+          transactionId: sameTime.id,
+          description: sameTime.description,
+          date: sameTime.date,
+          amountCents: sameTime.amountCents,
+          reason: 'same_transaction',
+        },
+        identicalLines: [],
+      };
+    }
+    // Without a transaction time: a pending purchase with the same amount and a similar name,
+    // posted a few days later (also catches "(Pending) …" rows imported before this existed).
+    if (!r.pending) {
+      const pending = pendingLike
+        .filter(
+          (t) =>
+            !consumed.has(t.id) &&
+            t.amountCents === r.amountCents &&
+            diffDays(t.date, r.date!) >= 0 &&
+            diffDays(t.date, r.date!) <= PENDING_POST_WINDOW_DAYS &&
+            similarDescriptions(t.description, r.description),
+        )
+        .sort((a, b) => diffDays(a.date, r.date!) - diffDays(b.date, r.date!))[0];
+      if (pending) {
+        consumed.add(pending.id);
+        return postsPending(r, index, fp, pending, 'similar');
+      }
     }
     const candidates = manual
       .filter(
@@ -173,6 +276,30 @@ export function stageRows(
     for (const s of g) s.identicalLines = g.filter((o) => o !== s).map((o) => o.line);
   }
   return staged;
+}
+
+function postsPending(
+  r: NormalisedRow,
+  index: number,
+  fingerprint: string,
+  pending: Transaction,
+  basis: PendingMatch['basis'],
+): StagedRow {
+  return {
+    ...r,
+    index,
+    status: 'posts_pending',
+    fingerprint,
+    include: true,
+    pendingMatch: {
+      transactionId: pending.id,
+      description: pending.description,
+      date: pending.date,
+      amountCents: pending.amountCents,
+      basis,
+    },
+    identicalLines: [],
+  };
 }
 
 export interface BalanceCheck {
@@ -293,6 +420,10 @@ export interface StagingSummary {
   duplicates: number;
   possibleDuplicates: number;
   newRows: number;
+  /** Posted versions of pending transactions imported earlier (they update those). */
+  postsPending: number;
+  /** Selected new rows that are still pending at the bank. */
+  pendingRows: number;
   identicalInFile: number;
   selected: number;
   selectedInCents: Cents;
@@ -316,6 +447,8 @@ export function summariseStaging(rows: readonly StagedRow[], account: Account): 
     duplicates: rows.filter((r) => r.status === 'duplicate').length,
     possibleDuplicates: rows.filter((r) => r.status === 'possible_duplicate').length,
     newRows: rows.filter((r) => r.status === 'new').length,
+    postsPending: rows.filter((r) => r.status === 'posts_pending').length,
+    pendingRows: selected.filter((r) => r.pending && r.status === 'new').length,
     // Only new rows: identical rows that are already-imported duplicates are skipped anyway.
     identicalInFile: rows.filter((r) => r.status === 'new' && r.identicalLines.length > 0).length,
     selected: selected.length,

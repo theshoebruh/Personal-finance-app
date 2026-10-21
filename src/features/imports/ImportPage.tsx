@@ -124,6 +124,8 @@ function statusBadge(r: StagedRow) {
       return <Badge kind="warning">Already imported</Badge>;
     case 'possible_duplicate':
       return <Badge kind="warning">Possible duplicate</Badge>;
+    case 'posts_pending':
+      return <Badge kind="actual">Now posted</Badge>;
     default:
       return <Badge kind="actual">New</Badge>;
   }
@@ -766,6 +768,15 @@ function ReviewStep({
   const categorised = rows.filter(
     (r) => r.include && r.status !== 'invalid' && !r.transferAccountId && r.categoryId,
   ).length;
+  /** The user says a "now posted" row isn't the earlier pending one: import it as new. */
+  const importAsNew = (index: number) =>
+    setRows(
+      rows.map((r) => {
+        if (r.index !== index) return r;
+        const { pendingMatch: _drop, ...rest } = r;
+        return { ...rest, status: 'new', include: true };
+      }),
+    );
   const toggle = (index: number) =>
     setRows(
       rows.map((r) =>
@@ -898,6 +909,7 @@ function ReviewStep({
                   {r.date && <DateText date={r.date} />}
                   {statusBadge(r)}
                   {r.splitFee && <Badge>Bank fee</Badge>}
+                  {r.pending && r.status !== 'invalid' && <Badge kind="forecast">Pending</Badge>}
                   {r.transferSuggestion?.strength === 'wording' && !r.transferAccountId && (
                     <Badge kind="warning">Possible transfer</Badge>
                   )}
@@ -930,6 +942,22 @@ function ReviewStep({
                         )}
                       </span>
                     )}
+                  </div>
+                )}
+                {r.status === 'posts_pending' && r.pendingMatch && (
+                  <div className="review-notes">
+                    <span>
+                      Posted version of “{r.pendingMatch.description}” (pending since{' '}
+                      <DateText date={r.pendingMatch.date} />
+                      ): updates it instead of adding it twice.
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm link-button"
+                      onClick={() => importAsNew(r.index)}
+                    >
+                      It’s a different transaction
+                    </button>
                   </div>
                 )}
                 {(r.errors.length > 0 ||
@@ -1097,7 +1125,7 @@ function DoneStep({
 }) {
   const b: ImportBatch = result.batch;
   const plural = result.created === 1 ? '' : 's';
-  const toReview = result.created - result.categorised - result.transfers;
+  const toReview = result.needsReview;
   return (
     <section className="step step-done" aria-labelledby="step-done">
       <Ring value={1} size={112} thickness={9} label="Import complete">
@@ -1118,6 +1146,10 @@ function DoneStep({
         .
         {result.transfers > 0 &&
           ` ${result.transfers} as transfer${result.transfers === 1 ? '' : 's'} between your accounts.`}
+        {result.postedPending > 0 &&
+          ` ${result.postedPending} pending transaction${result.postedPending === 1 ? '' : 's'} from earlier now posted (updated, not added twice).`}
+        {result.pending > 0 &&
+          ` ${result.pending} still pending at your bank: not counted until ${result.pending === 1 ? 'it clears' : 'they clear'}.`}
         {b.skippedCount ? ` ${b.skippedCount} skipped.` : ''}
         {b.errorCount ? ` ${b.errorCount} couldn’t be read.` : ''}
       </p>

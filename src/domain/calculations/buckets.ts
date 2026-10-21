@@ -75,6 +75,8 @@ export interface BucketSummary {
   savingsTransfersCents: Cents;
   /** Sum of the five targets; should be 100. */
   targetTotalPercent: number;
+  /** Spending still pending at the bank (not in any figure above until it posts), positive. */
+  pendingOutCents: Cents;
 }
 
 /**
@@ -187,5 +189,16 @@ export function bucketSummary(input: {
     uncategorisedCents: uncategorised,
     savingsTransfersCents: savingsTransfers,
     targetTotalPercent: BUCKETS.reduce((s, b) => s + targets[b], 0),
+    pendingOutCents: transactions
+      .filter(
+        (t) =>
+          t.status === 'pending' &&
+          !t.archived &&
+          t.amountCents < 0 &&
+          t.type !== 'transfer' &&
+          t.date >= start &&
+          t.date <= end,
+      )
+      .reduce((sum, t) => sum - t.amountCents, 0),
   };
 }

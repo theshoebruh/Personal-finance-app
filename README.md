@@ -164,6 +164,12 @@ savings”) can be imported as transfers so they don't count as income or spendi
 transactions can be converted with _Convert to transfer_. Imported transactions are marked **Needs review**, keep
 their original row text, and can be removed together with **Undo import**.
 
+**Pending card purchases** (marked “(Pending)”, or without a running balance when the other lines
+have one) import as **pending**: they're shown but not counted in balances or totals until they
+clear. When a later statement has the posted version, it's recognised (by the bank's transaction
+date/time, or the same amount and a similar name a few days later) and **updates** the pending
+transaction instead of adding it twice. Undoing that import puts it back to pending.
+
 ## Your data: backup, privacy and limitations
 
 - **Signed in:** records are stored in your Supabase project, readable only through your account
