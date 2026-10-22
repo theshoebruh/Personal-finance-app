@@ -28,7 +28,16 @@ const SAMPLES: Record<SyncedTable, object> = {
     reconciledBalanceCents: 1200,
     reconciledDate: '2026-03-31',
   }),
-  categories: makeCategory({ id: 'c1' }),
+  categories: makeCategory({ id: 'c1', budgetGroupId: 'grp-wants' }),
+  budgetGroups: {
+    id: 'grp-wants',
+    name: 'Wants',
+    kind: 'spending',
+    colour: 2,
+    targetPercent: 22.5,
+    sortOrder: 1,
+    ...meta,
+  },
   importBatches: {
     id: 'b1',
     accountId: 'a1',

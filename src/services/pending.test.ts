@@ -2,8 +2,7 @@ import Dexie from 'dexie';
 import { FinanceDb } from '@/data/local-db/db';
 import { createDexieStore } from '@/data/repositories/dexieStore';
 import type { FinanceStore } from '@/data/repositories/types';
-import { bucketSummary } from '@/domain/calculations/buckets';
-import { SETTINGS_ID } from '@/domain/models';
+import { groupSummary } from '@/domain/calculations/buckets';
 import { summariseStaging } from '@/domain/imports';
 import { createAccount } from './accountsService';
 import { ensureInitialised } from './settingsService';
@@ -177,14 +176,14 @@ describe('pending card purchases', () => {
 
   it('keeps pending spending out of the totals, and reports it separately', async () => {
     await importCsv(FIRST, 'first.csv');
-    const [settings, categories, accounts, transactions] = await Promise.all([
-      store.settings.get(SETTINGS_ID),
+    const [groups, categories, accounts, transactions] = await Promise.all([
+      store.budgetGroups.list(),
       store.categories.list(),
       store.accounts.list(),
       store.transactions.list(),
     ]);
-    const s = bucketSummary({
-      settings: settings!,
+    const s = groupSummary({
+      groups,
       categories,
       accounts,
       transactions,

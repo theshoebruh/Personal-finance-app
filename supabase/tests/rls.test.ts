@@ -15,6 +15,7 @@ const TABLES = [
   'invoices',
   'settings',
   'deletions',
+  'budget_groups',
 ];
 
 let alice: TestUser;

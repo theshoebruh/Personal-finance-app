@@ -1,41 +1,27 @@
-import {
-  type Account,
-  type AppSettings,
-  type Bucket,
-  BUCKETS,
-  type Category,
-  type SpendingBucket,
-  type Transaction,
-  bucketForGroup,
-} from '../models';
+import type { Account, BudgetGroup, Category, Transaction } from '../models';
+import { GROUP_IDS, defaultGroupIdFor } from '../defaults';
 import type { IsoDate } from '../dates';
 import { type Cents, percentOf } from '../money';
 import { savingsMadeInPeriod } from './goals';
-import { spendingByCategory, summariseIncomeExpenses } from './reporting';
+import { spendingByCategory } from './reporting';
 import { isActual } from './balances';
 
-export const DEFAULT_TARGETS: Record<Bucket, number> = {
-  needs: 50,
-  wants: 20,
-  savings: 20,
-  rf: 5,
-  buffer: 5,
-};
+/**
+ * The group a category counts towards: the one it was put in, or (for data from before custom
+ * groups, or a link cleared by an older app version) its default group, if that group exists.
+ */
+export function groupIdForCategory(
+  category: Category,
+  groupIds: ReadonlySet<string>,
+): string | null {
+  if (category.budgetGroupId && groupIds.has(category.budgetGroupId)) return category.budgetGroupId;
+  const fallback = defaultGroupIdFor(category.group);
+  return fallback && groupIds.has(fallback) ? fallback : null;
+}
 
-type TargetSettings = Pick<
-  AppSettings,
-  'savingsRatePercent' | 'needsPercent' | 'wantsPercent' | 'sideBusinessPercent' | 'bufferPercent'
->;
-
-/** Target % of income per group, with defaults for unset values. */
-export function bucketTargets(settings: TargetSettings): Record<Bucket, number> {
-  return {
-    needs: settings.needsPercent ?? DEFAULT_TARGETS.needs,
-    wants: settings.wantsPercent ?? DEFAULT_TARGETS.wants,
-    savings: settings.savingsRatePercent,
-    rf: settings.sideBusinessPercent ?? DEFAULT_TARGETS.rf,
-    buffer: settings.bufferPercent ?? DEFAULT_TARGETS.buffer,
-  };
+/** Groups you want to reach (Savings, Buffer) rather than stay under. */
+export function isGoalToReach(group: Pick<BudgetGroup, 'id' | 'kind'>): boolean {
+  return group.kind === 'leftover' || group.id === GROUP_IDS.savings;
 }
 
 export interface CategoryAmount {
@@ -44,79 +30,108 @@ export interface CategoryAmount {
   cents: Cents;
 }
 
-export interface BucketLine {
-  bucket: Bucket;
-  /** Money in this group this period (Buffer: income − all spending; can be negative). */
+export interface GroupLine {
+  group: BudgetGroup;
+  /** Money in this group this period (net of money coming back). Leftover: income − spending. */
   actualCents: Cents;
   targetPercent: number;
   /** targetPercent of income. */
   targetCents: Cents;
   /** Actual as % of income; null when there is no income yet. */
   actualPercent: number | null;
-  /** Spending groups: target − actual (negative = over). Buffer: actual − target. */
+  /** Spending groups: target − actual (negative = over). Leftover: actual − target. */
   leftCents: Cents;
-  /** Spending per category, largest first (empty for Buffer). */
+  /** Per category, largest first (empty for the leftover group). */
   categories: CategoryAmount[];
 }
 
-export interface BucketSummary {
+export interface GroupSummary {
   start: IsoDate;
   end: IsoDate;
   incomeCents: Cents;
   incomeByCategory: CategoryAmount[];
-  /** All spending: the four spending groups plus uncategorised. */
+  /** All spending: every spending group plus uncategorised. */
   expenseCents: Cents;
-  /** income − expenses (= Buffer). */
+  /** income − expenses (= the leftover group). */
   leftCents: Cents;
-  lines: BucketLine[];
+  /** In the groups' order (the leftover group last). */
+  lines: GroupLine[];
   /** Spending without a category (counted in expenses, not in any group). */
   uncategorisedCents: Cents;
   /** Savings moved by transfer from a spendable account into a savings account. */
   savingsTransfersCents: Cents;
-  /** Sum of the five targets; should be 100. */
+  /** Money taken back out of savings (transfers, or income marked "Transfer from savings"). */
+  savingsWithdrawalsCents: Cents;
+  /** Sum of all goals; should be 100. */
   targetTotalPercent: number;
   /** Spending still pending at the bank (not in any figure above until it posts), positive. */
   pendingOutCents: Cents;
 }
 
 /**
- * The five-group view of a period, like a monthly budget sheet:
- * - Income: income transactions (refunds reduce spending in their category instead).
- * - Needs / Wants / RF: net spending in categories of that group.
- * - Savings: spending in Savings categories plus transfers from a spendable account into a
- *   non-spendable one (e.g. into a 7-day account). Other transfers between your own accounts are
- *   neither income nor spending.
- * - Buffer: what's left (income − all spending, including uncategorised).
- * Targets are % of this period's income; "left" is target − actual.
+ * The groups view of a period, like a monthly budget sheet:
+ * - Income: income transactions. Income categorised under a spending group (e.g. "Transfer from
+ *   savings") is money coming back into that group, so it reduces that group instead.
+ * - Spending groups: net spending in their categories (refunds reduce it). The Savings group also
+ *   counts transfers from a spendable account into a savings account, minus transfers back.
+ * - Leftover (Buffer): income − all spending, including uncategorised.
+ * Goals are % of this period's income; "left" is goal − actual.
  */
-export function bucketSummary(input: {
-  settings: TargetSettings;
+export function groupSummary(input: {
+  groups: readonly BudgetGroup[];
   categories: readonly Category[];
   accounts: readonly Account[];
   transactions: readonly Transaction[];
   start: IsoDate;
   end: IsoDate;
-}): BucketSummary {
+}): GroupSummary {
   const { categories, transactions, start, end } = input;
-  const targets = bucketTargets(input.settings);
+  const groups = [...input.groups].sort((a, b) => a.sortOrder - b.sortOrder);
+  const spendingGroups = groups.filter((g) => g.kind === 'spending');
+  const spendingIds = new Set(spendingGroups.map((g) => g.id));
   const byId = new Map(categories.map((c) => [c.id, c]));
-  const summary = summariseIncomeExpenses(transactions, 'combined', start, end);
-  const income = summary.incomeCents;
+  const groupOf = (catId: string | null) => {
+    const cat = catId ? byId.get(catId) : undefined;
+    const g = cat ? groupIdForCategory(cat, spendingIds) : null;
+    return { cat, g };
+  };
+  const inPeriod = (t: Transaction) => isActual(t) && t.date >= start && t.date <= end;
 
-  const spent: Record<SpendingBucket, Map<string, Cents>> = {
-    needs: new Map(),
-    wants: new Map(),
-    savings: new Map(),
-    rf: new Map(),
+  // Spending (expenses and refunds) per group and category.
+  const perGroup = new Map<string, Map<string, Cents>>(
+    spendingGroups.map((g) => [g.id, new Map()]),
+  );
+  const add = (groupId: string, catId: string, cents: Cents) => {
+    const m = perGroup.get(groupId)!;
+    m.set(catId, (m.get(catId) ?? 0) + cents);
   };
   let uncategorised = 0;
   for (const [catId, cents] of spendingByCategory(transactions, 'combined', start, end)) {
-    const cat = catId ? byId.get(catId) : undefined;
-    const bucket = cat ? bucketForGroup(cat.group) : null;
-    if (!cat || !bucket) uncategorised += cents;
-    else spent[bucket].set(cat.id, (spent[bucket].get(cat.id) ?? 0) + cents);
+    const { cat, g } = groupOf(catId);
+    if (cat && g) add(g, cat.id, cents);
+    else uncategorised += cents;
   }
-  const savingsTransfers = savingsMadeInPeriod(
+
+  // Income, or money coming back into a spending group.
+  let income = 0;
+  let withdrawalsByCategory = 0;
+  const incomeCats = new Map<string, Cents>();
+  for (const t of transactions) {
+    if (!inPeriod(t) || t.type !== 'income') continue;
+    const { cat, g } = groupOf(t.categoryId);
+    if (cat && g) {
+      add(g, cat.id, -t.amountCents);
+      if (g === GROUP_IDS.savings) withdrawalsByCategory += t.amountCents;
+      continue;
+    }
+    income += t.amountCents;
+    const key = t.categoryId ?? '';
+    incomeCats.set(key, (incomeCats.get(key) ?? 0) + t.amountCents);
+  }
+
+  // Transfers between a spendable and a savings account.
+  const savingsGroup = spendingIds.has(GROUP_IDS.savings) ? GROUP_IDS.savings : null;
+  const savingsIn = savingsMadeInPeriod(
     [],
     [],
     input.accounts,
@@ -125,53 +140,45 @@ export function bucketSummary(input: {
     start,
     end,
   );
+  const savingsOut = savingsWithdrawnInPeriod(input.accounts, transactions, start, end);
+  if (!savingsGroup) uncategorised += savingsIn - savingsOut;
 
-  // Two decimals, like a spreadsheet's percentage format.
   const pct = (cents: Cents) => (income > 0 ? Math.round((cents * 10_000) / income) / 100 : null);
-  const amounts = (m: Map<string, Cents>): CategoryAmount[] =>
-    [...m]
+  const target = (g: BudgetGroup) => percentOf(Math.max(0, income), g.targetPercent);
+
+  const spendingLines: GroupLine[] = spendingGroups.map((g) => {
+    const cats = [...perGroup.get(g.id)!]
       .map(([id, cents]) => ({ categoryId: id, name: byId.get(id)?.name ?? 'Unknown', cents }))
       .filter((c) => c.cents !== 0)
       .sort((a, b) => b.cents - a.cents);
-
-  const lines: BucketLine[] = [];
-  let expenses = uncategorised + savingsTransfers;
-  for (const bucket of BUCKETS) {
-    if (bucket === 'buffer') continue;
-    const cats = amounts(spent[bucket]);
-    const actual =
-      cats.reduce((s, c) => s + c.cents, 0) + (bucket === 'savings' ? savingsTransfers : 0);
-    if (bucket !== 'savings') expenses += actual;
-    else expenses += actual - savingsTransfers;
-    const target = percentOf(Math.max(0, income), targets[bucket]);
-    lines.push({
-      bucket,
+    const transfers = g.id === savingsGroup ? savingsIn - savingsOut : 0;
+    const actual = cats.reduce((s, c) => s + c.cents, 0) + transfers;
+    return {
+      group: g,
       actualCents: actual,
-      targetPercent: targets[bucket],
-      targetCents: target,
+      targetPercent: g.targetPercent,
+      targetCents: target(g),
       actualPercent: pct(actual),
-      leftCents: target - actual,
+      leftCents: target(g) - actual,
       categories: cats,
-    });
-  }
+    };
+  });
+  const expenses = spendingLines.reduce((s, l) => s + l.actualCents, 0) + uncategorised;
   const left = income - expenses;
-  const bufferTarget = percentOf(Math.max(0, income), targets.buffer);
-  lines.push({
-    bucket: 'buffer',
-    actualCents: left,
-    targetPercent: targets.buffer,
-    targetCents: bufferTarget,
-    actualPercent: pct(left),
-    leftCents: left - bufferTarget,
-    categories: [],
+
+  const lines: GroupLine[] = groups.map((g) => {
+    if (g.kind === 'spending') return spendingLines.find((l) => l.group.id === g.id)!;
+    return {
+      group: g,
+      actualCents: left,
+      targetPercent: g.targetPercent,
+      targetCents: target(g),
+      actualPercent: pct(left),
+      leftCents: left - target(g),
+      categories: [],
+    };
   });
 
-  const incomeCats = new Map<string, Cents>();
-  for (const t of transactions) {
-    if (!isActual(t) || t.type !== 'income' || t.date < start || t.date > end) continue;
-    const key = t.categoryId ?? '';
-    incomeCats.set(key, (incomeCats.get(key) ?? 0) + t.amountCents);
-  }
   return {
     start,
     end,
@@ -187,8 +194,9 @@ export function bucketSummary(input: {
     leftCents: left,
     lines,
     uncategorisedCents: uncategorised,
-    savingsTransfersCents: savingsTransfers,
-    targetTotalPercent: BUCKETS.reduce((s, b) => s + targets[b], 0),
+    savingsTransfersCents: savingsIn,
+    savingsWithdrawalsCents: savingsOut + withdrawalsByCategory,
+    targetTotalPercent: groups.reduce((s, g) => s + g.targetPercent, 0),
     pendingOutCents: transactions
       .filter(
         (t) =>
@@ -201,4 +209,33 @@ export function bucketSummary(input: {
       )
       .reduce((sum, t) => sum - t.amountCents, 0),
   };
+}
+
+/**
+ * Transfers from a savings (non-spendable) account into a spendable one in the period: savings
+ * taken back out. Both legs must be recorded, as for savings put away.
+ */
+export function savingsWithdrawnInPeriod(
+  accounts: readonly Account[],
+  transactions: readonly Transaction[],
+  start: IsoDate,
+  end: IsoDate,
+): Cents {
+  const accountById = new Map(accounts.map((a) => [a.id, a]));
+  const legs = new Map<string, Transaction[]>();
+  for (const t of transactions) {
+    if (t.type !== 'transfer' || !t.transferId || !isActual(t)) continue;
+    legs.set(t.transferId, [...(legs.get(t.transferId) ?? []), t]);
+  }
+  let total = 0;
+  for (const pair of legs.values()) {
+    const into = pair.find((l) => l.amountCents > 0);
+    const outOf = pair.find((l) => l.amountCents < 0);
+    if (!into || !outOf || into.date < start || into.date > end) continue;
+    const dest = accountById.get(into.accountId);
+    const src = accountById.get(outOf.accountId);
+    if (dest && src && !src.includeInSpendable && dest.includeInSpendable)
+      total += into.amountCents;
+  }
+  return total;
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  budgetGroupSchema,
   accountSchema,
   appSettingsSchema,
   budgetSchema,
@@ -33,6 +34,8 @@ const tables = {
   // Added in schema v2; older backups without it restore with no saved mappings.
   importProfiles: z.array(importProfileSchema).default([]),
   categorisationRules: z.array(categorisationRuleSchema),
+  // Added with custom groups; older backups restore without them (defaults are added on start-up).
+  budgetGroups: z.array(budgetGroupSchema).default([]),
   projects: z.array(projectSchema),
   invoices: z.array(invoiceSchema),
   settings: z.array(appSettingsSchema).max(1),

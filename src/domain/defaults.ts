@@ -1,4 +1,10 @@
-import { type AppSettings, type Category, type CategoryGroup, SETTINGS_ID } from './models';
+import {
+  type AppSettings,
+  type BudgetGroup,
+  type Category,
+  type CategoryGroup,
+  SETTINGS_ID,
+} from './models';
 
 /**
  * Editable starting defaults from the requirements (section 3.1). These are a plan, not facts:
@@ -76,11 +82,8 @@ const SEED_CATEGORIES: SeedCategory[] = [
   // Savings (money put away that isn't recorded as a transfer to another of your accounts)
   ['cat-savings', 'Savings', 'expense', 'savings', 'personal'],
   ['cat-emergency', 'Emergency fund', 'expense', 'savings', 'personal'],
-  // RF (side business), usable on personal accounts
-  ['cat-rf-stock', 'Stock & printing', 'expense', 'business_expense', 'both'],
-  ['cat-rf-design', 'Design assets', 'expense', 'business_expense', 'both'],
-  ['cat-rf-shipping', 'Shipping', 'expense', 'business_expense', 'both'],
-  ['cat-rf-other', 'Other RF costs', 'expense', 'business_expense', 'both'],
+  // Money coming back from savings: reduces Savings instead of counting as income.
+  ['cat-from-savings', 'Transfer from savings', 'income', 'savings', 'personal'],
   // Business workspace (hidden in the simple layout; kept for existing data)
   ['cat-biz-revenue', 'Sales / revenue', 'income', 'business_income', 'business'],
   ['cat-biz-stock', 'Stock & materials', 'expense', 'business_expense', 'business'],
@@ -102,10 +105,7 @@ export const SUGGESTED_CATEGORY_IDS = [
   'cat-gaming',
   'cat-savings',
   'cat-emergency',
-  'cat-rf-stock',
-  'cat-rf-design',
-  'cat-rf-shipping',
-  'cat-rf-other',
+  'cat-from-savings',
 ];
 
 export function seedCategories(now: string): Category[] {
@@ -115,9 +115,91 @@ export function seedCategories(now: string): Category[] {
     kind,
     group,
     workspace,
+    budgetGroupId: defaultGroupIdFor(group),
     archived: false,
     isDemo: false,
     createdAt: now,
     updatedAt: now,
   }));
+}
+
+// ---------------------------------------------------------------- Budget groups
+
+/** Fixed ids so devices that add the default groups independently converge on the same rows. */
+export const GROUP_IDS = {
+  needs: 'grp-needs',
+  wants: 'grp-wants',
+  savings: 'grp-savings',
+  buffer: 'grp-buffer',
+  /** Created only for setups that had RF categories before custom groups. */
+  rf: 'grp-rf',
+} as const;
+
+/** Starting goals for a new setup; everyone can change them. */
+export const DEFAULT_GROUP_PERCENTS = { needs: 50, wants: 30, savings: 15, buffer: 5 };
+
+/** The group a category belongs to by its built-in kind, before the user moves it anywhere. */
+export function defaultGroupIdFor(group: CategoryGroup): string | null {
+  switch (group) {
+    case 'essential':
+      return GROUP_IDS.needs;
+    case 'discretionary':
+      return GROUP_IDS.wants;
+    case 'savings':
+      return GROUP_IDS.savings;
+    case 'business_expense':
+      return GROUP_IDS.rf;
+    default:
+      return null;
+  }
+}
+
+export function defaultBudgetGroups(
+  now: string,
+  percents: {
+    needs: number;
+    wants: number;
+    savings: number;
+    buffer: number;
+  } = DEFAULT_GROUP_PERCENTS,
+): BudgetGroup[] {
+  const meta = { isDemo: false, createdAt: now, updatedAt: now };
+  return [
+    {
+      id: GROUP_IDS.needs,
+      name: 'Needs',
+      kind: 'spending',
+      colour: 1,
+      targetPercent: percents.needs,
+      sortOrder: 0,
+      ...meta,
+    },
+    {
+      id: GROUP_IDS.wants,
+      name: 'Wants',
+      kind: 'spending',
+      colour: 2,
+      targetPercent: percents.wants,
+      sortOrder: 1,
+      ...meta,
+    },
+    {
+      id: GROUP_IDS.savings,
+      name: 'Savings',
+      kind: 'spending',
+      colour: 3,
+      targetPercent: percents.savings,
+      sortOrder: 2,
+      ...meta,
+    },
+    {
+      id: GROUP_IDS.buffer,
+      name: 'Buffer',
+      kind: 'leftover',
+      colour: 5,
+      targetPercent: percents.buffer,
+      sortOrder: 900,
+      ...meta,
+    },
+  ];
 }

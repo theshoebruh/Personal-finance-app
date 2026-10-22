@@ -1,12 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router';
 import { useApp } from '@/app/AppContext';
-import {
-  BUCKET_GROUP,
-  BUCKET_LABELS,
-  BUCKETS,
-  type Bucket,
-  type SpendingBucket,
-} from '@/domain/models';
+import { GROUP_IDS } from '@/domain/defaults';
+import { groupIdForCategory } from '@/domain/calculations/buckets';
 import { formatZAR } from '@/domain/money';
 import { isActual } from '@/domain/calculations/balances';
 import { updateTransaction } from '@/services/transactionsService';
@@ -15,7 +10,7 @@ import { backToHome, shouldAnimateClick } from '@/app/viewTransition';
 import { PageHeader } from '@/components/PageHeader';
 import { Donut, Ring, fraction, shadeOf } from '@/components/charts';
 import { CategoryOptions, lookup } from '../shared';
-import { BUCKET_COLOUR, BUCKET_HINT, useBuckets } from './useBuckets';
+import { groupColour, groupHint, useBuckets } from './useBuckets';
 import { LeftText, percentText, ringTone } from './HomePage';
 
 export function GroupPage() {
@@ -25,8 +20,8 @@ export function GroupPage() {
   const { run, statusNode } = useStatus();
   const navigate = useNavigate();
   if (!buckets) return <Loading />;
-  const bucket = (BUCKETS as readonly string[]).includes(param ?? '') ? (param as Bucket) : null;
-  if (!bucket) {
+  const line = buckets.summary.lines.find((l) => l.group.id === param);
+  if (!line) {
     return (
       <>
         <PageHeader title="Group not found" back={{ to: '/', label: 'Home' }} />
@@ -35,26 +30,37 @@ export function GroupPage() {
     );
   }
   const { data, period, summary } = buckets;
-  const line = summary.lines.find((l) => l.bucket === bucket)!;
-  const name = BUCKET_LABELS[bucket];
+  const g = line.group;
+  const bucket = g.id;
+  const name = g.name;
+  const isLeftover = g.kind === 'leftover';
+  // Money coming back into the group (e.g. "Transfer from savings") is negative: listed, not drawn.
+  const positive = line.categories.filter((c) => c.cents > 0);
+  const moneyBack = line.categories.filter((c) => c.cents < 0);
+  const colour = groupColour(g);
+  const hint = groupHint(g);
   const categoriesById = lookup(data.categories);
   const accountsById = lookup(data.accounts);
 
-  const group = bucket === 'buffer' ? null : BUCKET_GROUP[bucket as SpendingBucket];
-  const txns =
-    group === null
-      ? []
-      : data.transactions
-          .filter(
-            (t) =>
-              isActual(t) &&
-              (t.type === 'expense' || t.type === 'refund') &&
-              t.date >= period.start &&
-              t.date <= period.end &&
-              t.categoryId !== null &&
-              categoriesById.get(t.categoryId)?.group === group,
-          )
-          .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const spendingIds = new Set(
+    data.budgetGroups.filter((o) => o.kind === 'spending').map((o) => o.id),
+  );
+  const inThisGroup = (categoryId: string | null) => {
+    const cat = categoryId ? categoriesById.get(categoryId) : undefined;
+    return !!cat && groupIdForCategory(cat, spendingIds) === g.id;
+  };
+  const txns = isLeftover
+    ? []
+    : data.transactions
+        .filter(
+          (t) =>
+            isActual(t) &&
+            (t.type === 'expense' || t.type === 'refund' || t.type === 'income') &&
+            t.date >= period.start &&
+            t.date <= period.end &&
+            inThisGroup(t.categoryId),
+        )
+        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
   return (
     <>
@@ -62,8 +68,8 @@ export function GroupPage() {
         title={name}
         subtitle={
           <>
-            {BUCKET_HINT[bucket]} · <DateText date={period.start} /> –{' '}
-            <DateText date={period.end} />
+            {hint && <>{hint} · </>}
+            <DateText date={period.start} /> – <DateText date={period.end} />
           </>
         }
         back={{
@@ -77,7 +83,7 @@ export function GroupPage() {
         }}
       />
 
-      <Card className={`hero group-hero group-tone-${BUCKET_COLOUR[bucket]}`}>
+      <Card className={`hero group-hero group-tone-${colour}`}>
         <Ring
           value={fraction(Math.max(0, line.actualCents), Math.max(1, line.targetCents))}
           label={`${name}: ${formatZAR(line.actualCents)} of ${formatZAR(line.targetCents)} target`}
@@ -90,7 +96,7 @@ export function GroupPage() {
         </Ring>
         <dl className="group-facts">
           <div>
-            <dt>{bucket === 'buffer' ? 'Left over' : 'Spent'}</dt>
+            <dt>{isLeftover ? 'Left over' : 'Spent'}</dt>
             <dd>
               <CountUpMoney cents={line.actualCents} countKey={`group-${bucket}`} />
             </dd>
@@ -110,40 +116,45 @@ export function GroupPage() {
         </dl>
       </Card>
 
-      {bucket === 'buffer' ? (
-        <Card title="How Buffer works">
+      {isLeftover ? (
+        <Card title={`How ${name} works`}>
           <p className="small">
-            Buffer is what’s left after all spending: income <Money cents={summary.incomeCents} /> −
+            {name} is what’s left after all spending: income <Money cents={summary.incomeCents} /> −
             spent <Money cents={summary.expenseCents} /> = <Money cents={summary.leftCents} />. Your
             goal is to keep {line.targetPercent}% of income unspent.
           </p>
         </Card>
       ) : (
         <>
-          {line.categories.length > 0 && (
+          {positive.length > 0 && (
             <Card title="By category">
               <Donut
                 // Shades of the group's own colour, so the chart reads as this group.
-                segments={line.categories.map((c, i) => ({
+                segments={positive.map((c, i) => ({
                   key: c.categoryId,
                   label: c.name,
                   cents: c.cents,
-                  colour: BUCKET_COLOUR[bucket],
-                  tint: shadeOf(BUCKET_COLOUR[bucket], i),
+                  colour,
+                  tint: shadeOf(colour, i),
                 }))}
-                totalCents={line.categories.reduce((s, c) => s + c.cents, 0)}
+                totalCents={positive.reduce((s, c) => s + c.cents, 0)}
                 label={`${name} by category`}
                 centreLabel="spent"
                 showPercent
               />
-              {bucket === 'savings' && summary.savingsTransfersCents > 0 && (
+              {bucket === GROUP_IDS.savings && summary.savingsTransfersCents > 0 && (
                 <p className="xs faint">
                   Plus <Money cents={summary.savingsTransfersCents} /> moved into savings accounts.
                 </p>
               )}
+              {moneyBack.map((c) => (
+                <p key={c.categoryId} className="xs faint">
+                  Minus <Money cents={-c.cents} /> back out ({c.name}).
+                </p>
+              ))}
             </Card>
           )}
-          {bucket === 'savings' &&
+          {bucket === GROUP_IDS.savings &&
             line.categories.length === 0 &&
             summary.savingsTransfersCents > 0 && (
               <p className="small">
@@ -195,7 +206,7 @@ export function GroupPage() {
                         <CategoryOptions
                           categories={data.categories}
                           workspace={t.workspace}
-                          kind="expense"
+                          kind={t.type === 'income' ? 'income' : 'expense'}
                         />
                       </select>
                     </div>

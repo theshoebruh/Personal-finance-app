@@ -73,6 +73,7 @@ const TABLES = [
   'invoices',
   'settings',
   'deletions',
+  'budget_groups',
 ];
 let missing = 0;
 let exposed = 0;

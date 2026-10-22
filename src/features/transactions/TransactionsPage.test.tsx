@@ -55,15 +55,18 @@ it('offers only categories that fit the selected transactions', async () => {
   render(<App db={db} store={store} initialPath="/transactions" />);
   await user.click(await screen.findByRole('checkbox', { name: /Print shop/ }));
   let bulk = screen.getByLabelText('Category for selected');
-  // Personal spending: the personal RF categories, not the business-only ones.
-  expect(optionLabels(bulk)).toContain('Stock & printing');
+  // Personal spending: personal categories, not the business-only ones.
+  expect(optionLabels(bulk)).toContain('Software & storage');
   expect(optionLabels(bulk)).not.toContain('Stock & materials');
   expect(groupLabels(bulk)).not.toContain('Income');
 
   await user.click(screen.getByRole('checkbox', { name: /Print shop/ }));
   await user.click(screen.getByRole('checkbox', { name: /Payment from a friend/ }));
   bulk = screen.getByLabelText('Category for selected');
-  expect(groupLabels(bulk)).toEqual(['Income']);
+  // Income categories only; "Transfer from savings" is listed under Savings.
+  expect(groupLabels(bulk)).toEqual(['Savings', 'Income']);
+  expect(optionLabels(bulk)).toContain('Transfer from savings');
+  expect(optionLabels(bulk)).not.toContain('Groceries');
 
   await user.selectOptions(bulk, 'cat-side-income');
   await user.click(screen.getByRole('button', { name: 'Apply' }));

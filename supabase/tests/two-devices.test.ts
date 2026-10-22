@@ -17,8 +17,8 @@ import {
 import { exportBackup, parseBackup, restoreBackup } from '@/services/backupService';
 import { commitImport, prepareImport } from '@/services/importService';
 import { getSettings, updateSettings } from '@/services/settingsService';
-import { setGroupTargets } from '@/services/categoriesService';
-import { bucketTargets } from '@/domain/calculations/buckets';
+import { addCategory, addGroup, setGroupTargets } from '@/services/categoriesService';
+import { GROUP_IDS } from '@/domain/defaults';
 import { key, newUser, url, type TestUser } from './helpers';
 
 const opened: FinanceDb[] = [];
@@ -128,20 +128,25 @@ describe('two devices through the real Supabase API', () => {
     expect(await phone.engine.listConflicts()).toEqual([]);
   });
 
-  it('group goals set on one device reach the other', async () => {
-    const user = await newUser('goals');
+  it('custom groups, their goals and categories reach the other device', async () => {
+    const user = await newUser('groups');
     const pc = await device(user);
-    await setGroupTargets(pc.store, { needs: 45, wants: 25, savings: 20, rf: 5, buffer: 5 });
+    const biz = await addGroup(pc.store, { name: 'Business' });
+    await setGroupTargets(pc.store, {
+      [GROUP_IDS.needs]: 45,
+      [GROUP_IDS.wants]: 25,
+      [GROUP_IDS.savings]: 20,
+      [biz.id]: 5,
+      [GROUP_IDS.buffer]: 5,
+    });
+    const prints = await addCategory(pc.store, { name: 'Prints', groupId: biz.id });
     await pc.engine.syncNow();
 
     const phone = await device(user);
-    expect(bucketTargets(await getSettings(phone.store))).toEqual({
-      needs: 45,
-      wants: 25,
-      savings: 20,
-      rf: 5,
-      buffer: 5,
-    });
+    const groups = new Map((await phone.db.budgetGroups.toArray()).map((g) => [g.id, g]));
+    expect(groups.get(biz.id)).toMatchObject({ name: 'Business', targetPercent: 5 });
+    expect(groups.get(GROUP_IDS.needs)?.targetPercent).toBe(45);
+    expect((await phone.db.categories.get(prints.id))?.budgetGroupId).toBe(biz.id);
     expect(await phone.engine.listConflicts()).toEqual([]);
   });
 

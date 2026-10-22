@@ -134,6 +134,18 @@ Safeguards against double counting:
   period reduce the remaining planned savings.
 - Expected income, pending transactions and unpaid invoices are never counted as cash.
 
+### Groups and goals
+
+Spending is sorted into **groups**, each with a goal as a share of income. Everyone starts with
+**Needs 50%, Wants 30%, Savings 15% and Buffer 5%** (Buffer is what's left over, income minus all
+spending). Under Categories you can change the goals (they must add up to 100%), rename groups, add
+your own (e.g. "Business" or "Car", up to 8 groups in total), move categories between groups and
+delete a group you added once it's empty (its goal moves to Buffer). Each login has its own groups
+and categories.
+
+Money coming back into a group isn't income: **Transfer from savings** (or a transfer from a savings
+account into a spendable one) reduces Savings by that amount instead.
+
 ### Budget periods and payday
 
 Settings → _Payday and budget period_ sets a payday (day of month) and whether budgets run per

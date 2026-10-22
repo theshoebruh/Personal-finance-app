@@ -9,7 +9,8 @@ import { todayInAppZone } from '@/domain/dates';
 import { createAccount } from '@/services/accountsService';
 import { ensureInitialised } from '@/services/settingsService';
 import { createTransaction } from '@/services/transactionsService';
-import type { BucketLine } from '@/domain/calculations/buckets';
+import type { GroupLine } from '@/domain/calculations/buckets';
+import { GROUP_IDS } from '@/domain/defaults';
 import { LeftText, isOver, ringTone } from './HomePage';
 
 let n = 0;
@@ -45,21 +46,21 @@ beforeEach(async () => {
     });
   await add('Salary', 1_000_000, 'income', 'cat-salary');
   await add('Prepaid electricity', 200_000, 'expense', 'cat-utilities');
-  await add('Spar snacks', 300_000, 'expense', 'cat-snacks');
+  await add('Spar snacks', 400_000, 'expense', 'cat-snacks');
 });
 afterEach(async () => {
   db.close();
   await Dexie.delete(db.name);
 });
 
-it('shows income, spending, what is left and the five groups', async () => {
+it('shows income, spending, what is left and the groups', async () => {
   render(<App db={db} store={store} initialPath="/" />);
   const hero = (await screen.findByText('Left this period')).closest('section')!;
-  await waitFor(() => expect(hero.querySelector('.hero-amount')).toHaveTextContent('5 000,00'));
+  await waitFor(() => expect(hero.querySelector('.hero-amount')).toHaveTextContent('4 000,00'));
   const wants = await screen.findByRole('link', { name: /Wants/ });
-  // R3,000 of a R2,000 goal (20% of R10,000).
+  // R4,000 of a R3,000 goal (30% of R10,000 by default).
   expect(within(wants).getByText(/over/)).toHaveTextContent('1 000,00');
-  expect(within(wants).getByText('30%')).toBeInTheDocument();
+  expect(within(wants).getByText('40%')).toBeInTheDocument();
   const needs = screen.getByRole('link', { name: /Needs/ });
   expect(within(needs).getByText(/left/)).toHaveTextContent('3 000,00');
   expect(screen.getByRole('link', { name: /Buffer/ })).toBeInTheDocument();
@@ -67,7 +68,7 @@ it('shows income, spending, what is left and the five groups', async () => {
 
 it('opens a group and moves a transaction to another category', async () => {
   const user = userEvent.setup({ delay: null });
-  render(<App db={db} store={store} initialPath="/group/wants" />);
+  render(<App db={db} store={store} initialPath="/group/grp-wants" />);
   expect(await screen.findByRole('heading', { level: 1, name: 'Wants' })).toBeInTheDocument();
   const select = await screen.findByLabelText('Category for Spar snacks');
   await user.selectOptions(select, 'cat-groceries');
@@ -89,26 +90,36 @@ it('edits group goals on the Categories page', async () => {
   expect(screen.getByRole('button', { name: 'Save goals' })).toBeDisabled();
   const wants = screen.getByLabelText('Wants goal (% of income)');
   await user.clear(wants);
-  await user.type(wants, '10');
+  await user.type(wants, '20');
   await user.click(screen.getByRole('button', { name: 'Save goals' }));
   expect(await screen.findByText('Goals saved')).toBeInTheDocument();
 });
 
 describe('group status and colours', () => {
-  const line = (
-    bucket: BucketLine['bucket'],
-    actualCents: number,
-    targetCents: number,
-  ): BucketLine => ({
-    bucket,
+  const GROUPS = {
+    needs: { id: GROUP_IDS.needs, name: 'Needs', kind: 'spending', colour: 1 },
+    wants: { id: GROUP_IDS.wants, name: 'Wants', kind: 'spending', colour: 2 },
+    savings: { id: GROUP_IDS.savings, name: 'Savings', kind: 'spending', colour: 3 },
+    rf: { id: 'grp-custom', name: 'RF', kind: 'spending', colour: 6 },
+    buffer: { id: GROUP_IDS.buffer, name: 'Buffer', kind: 'leftover', colour: 5 },
+  } as const;
+  const line = (key: keyof typeof GROUPS, actualCents: number, targetCents: number): GroupLine => ({
+    group: {
+      ...GROUPS[key],
+      targetPercent: 20,
+      sortOrder: 0,
+      isDemo: false,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
     actualCents,
     targetCents,
     targetPercent: 20,
     actualPercent: null,
-    leftCents: bucket === 'buffer' ? actualCents - targetCents : targetCents - actualCents,
+    leftCents: key === 'buffer' ? actualCents - targetCents : targetCents - actualCents,
     categories: [],
   });
-  const status = (l: BucketLine) => render(<LeftText line={l} />).container.textContent;
+  const status = (l: GroupLine) => render(<LeftText line={l} />).container.textContent;
 
   it('always colours a ring with its group colour, whatever its status', () => {
     expect(ringTone(line('needs', 9_000, 10_000))).toBe('chart-1');

@@ -3,6 +3,7 @@ import type {
   Account,
   AppSettings,
   Budget,
+  BudgetGroup,
   CategorisationRule,
   Category,
   GoalContribution,
@@ -60,6 +61,12 @@ export const SCHEMA_VERSIONS: ReadonlyArray<{
       conflicts: 'key, detectedAt',
     },
   },
+  {
+    // v4: custom budget groups (Needs, Wants, Savings, Buffer and the user's own). Existing data is
+    // untouched; groups are added by ensureInitialised.
+    version: 4,
+    stores: { budgetGroups: 'id' },
+  },
 ];
 
 /** A local change waiting to be sent to the server (one per record; the latest operation wins). */
@@ -103,6 +110,7 @@ export class FinanceDb extends Dexie {
   accounts!: Table<Account, string>;
   transactions!: Table<Transaction, string>;
   categories!: Table<Category, string>;
+  budgetGroups!: Table<BudgetGroup, string>;
   budgets!: Table<Budget, string>;
   goals!: Table<SavingsGoal, string>;
   goalContributions!: Table<GoalContribution, string>;
@@ -130,6 +138,7 @@ export class FinanceDb extends Dexie {
 /** Tables that hold user records (everything except settings), in backup order. */
 export const DATA_TABLES = [
   'accounts',
+  'budgetGroups',
   'categories',
   'transactions',
   'budgets',

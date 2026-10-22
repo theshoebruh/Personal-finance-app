@@ -2,6 +2,7 @@ import { ZodDefault, ZodEffects, ZodNullable, ZodObject, ZodOptional, type ZodTy
 import {
   accountSchema,
   appSettingsSchema,
+  budgetGroupSchema,
   budgetSchema,
   categorisationRuleSchema,
   categorySchema,
@@ -20,6 +21,7 @@ import type { StoreTableName } from '../repositories/types';
 export const REMOTE_TABLES = {
   accounts: 'accounts',
   categories: 'categories',
+  budgetGroups: 'budget_groups',
   importBatches: 'import_batches',
   transactions: 'transactions',
   budgets: 'budgets',
@@ -48,6 +50,7 @@ export function localTableFor(remote: string): SyncedTable | null {
 export const SCHEMAS: Record<SyncedTable, ZodTypeAny> = {
   accounts: accountSchema,
   categories: categorySchema,
+  budgetGroups: budgetGroupSchema,
   importBatches: importBatchSchema,
   transactions: transactionSchema,
   budgets: budgetSchema,

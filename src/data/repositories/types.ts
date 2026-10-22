@@ -1,4 +1,5 @@
 import type {
+  BudgetGroup,
   Account,
   AppSettings,
   Budget,
@@ -37,6 +38,7 @@ export interface FinanceStore {
     byImportBatch(importBatchId: string): Promise<Transaction[]>;
   };
   categories: EntityRepository<Category>;
+  budgetGroups: EntityRepository<BudgetGroup>;
   budgets: EntityRepository<Budget>;
   goals: EntityRepository<SavingsGoal>;
   goalContributions: EntityRepository<GoalContribution>;
