@@ -60,10 +60,14 @@ describe('core flow', () => {
     tx.unmount();
 
     render(<App db={db} store={store} initialPath="/" />);
-    // Home: no income yet, R1,250.50 spent without a category.
-    const hero = await screen.findByText('Left this period');
+    // Home: R5,000 opening balance minus R1,250.50 spent (no income yet, no category).
+    const hero = await screen.findByText('Current balance');
     const card = hero.closest('section')!;
-    await waitFor(() => expect(card.querySelector('.hero-amount')).toHaveTextContent('1 250,50'));
+    await waitFor(() => expect(card.querySelector('.hero-amount')).toHaveTextContent('3 749,50'));
+    expect(within(card).getByText('Left this period')).toBeInTheDocument();
+    expect(card.querySelector('.period-explainer')).toHaveTextContent(
+      /1 250,50 more went out than came in/,
+    );
     expect(await screen.findByText(/of spending has no category yet/)).toBeInTheDocument();
   });
 
