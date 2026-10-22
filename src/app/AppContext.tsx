@@ -6,6 +6,7 @@ import type {
   Account,
   AppSettings,
   Budget,
+  BudgetGroup,
   Category,
   GoalContribution,
   RecurringRule,
@@ -22,6 +23,7 @@ export interface FinanceData {
   accounts: Account[];
   transactions: Transaction[];
   categories: Category[];
+  budgetGroups: BudgetGroup[];
   budgets: Budget[];
   goals: SavingsGoal[];
   goalContributions: GoalContribution[];
@@ -114,6 +116,7 @@ export function useFinanceData(): FinanceData | undefined {
       accounts,
       transactions,
       categories,
+      budgetGroups,
       budgets,
       goals,
       goalContributions,
@@ -123,6 +126,7 @@ export function useFinanceData(): FinanceData | undefined {
       db.accounts.toArray(),
       db.transactions.toArray(),
       db.categories.toArray(),
+      db.budgetGroups.toArray(),
       db.budgets.toArray(),
       db.goals.toArray(),
       db.goalContributions.toArray(),
@@ -134,6 +138,7 @@ export function useFinanceData(): FinanceData | undefined {
       accounts,
       transactions,
       categories,
+      budgetGroups: budgetGroups.sort((a, b) => a.sortOrder - b.sortOrder),
       budgets,
       goals,
       goalContributions,

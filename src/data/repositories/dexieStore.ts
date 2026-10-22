@@ -5,6 +5,7 @@ import {
   appSettingsSchema,
   budgetSchema,
   categorisationRuleSchema,
+  budgetGroupSchema,
   categorySchema,
   goalContributionSchema,
   importBatchSchema,
@@ -84,6 +85,7 @@ export function createDexieStore(db: FinanceDb = getDb()): FinanceStore {
     goals: repo(db.goals, savingsGoalSchema, 'goal'),
     goalContributions: repo(db.goalContributions, goalContributionSchema, 'goal contribution'),
     recurringRules: repo(db.recurringRules, recurringRuleSchema, 'recurring item'),
+    budgetGroups: repo(db.budgetGroups, budgetGroupSchema, 'budget group'),
     importBatches: repo(db.importBatches, importBatchSchema, 'import batch'),
     importProfiles: repo(db.importProfiles, importProfileSchema, 'import profile'),
     categorisationRules: repo(

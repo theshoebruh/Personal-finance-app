@@ -1,44 +1,42 @@
 import { useState, type FormEvent } from 'react';
 import { useApp, useFinanceData } from '@/app/AppContext';
-import {
-  BUCKET_GROUP,
-  BUCKET_LABELS,
-  BUCKETS,
-  type Bucket,
-  type Category,
-  type SpendingBucket,
-} from '@/domain/models';
-import { bucketTargets } from '@/domain/calculations/buckets';
+import { type BudgetGroup, type Category, MAX_BUDGET_GROUPS } from '@/domain/models';
+import { GROUP_IDS } from '@/domain/defaults';
+import { groupIdForCategory } from '@/domain/calculations/buckets';
 import {
   addCategory,
+  addGroup,
   addSuggestedCategories,
+  deleteGroup,
   missingSuggestions,
   moveCategory,
   renameCategory,
+  renameGroup,
   setCategoryArchived,
   setGroupTargets,
 } from '@/services/categoriesService';
 import { Alert, Card, Loading, useStatus } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { PageHeader } from '@/components/PageHeader';
-import { BUCKET_HINT } from '../home/useBuckets';
+import { groupColour, groupHint } from '../home/useBuckets';
 
-const SPENDING: SpendingBucket[] = ['needs', 'wants', 'savings', 'rf'];
+type Run = ReturnType<typeof useStatus>['run'];
+
+/** Needs, Wants and Savings can be renamed but not deleted; the leftover group never. */
+const BUILT_IN = new Set<string>([GROUP_IDS.needs, GROUP_IDS.wants, GROUP_IDS.savings]);
 
 function GoalsForm({
-  initial,
+  groups,
   onSave,
 }: {
-  initial: Record<Bucket, number>;
-  onSave: (t: Record<Bucket, number>) => void;
+  groups: BudgetGroup[];
+  onSave: (t: Record<string, number>) => void;
 }) {
   const [values, setValues] = useState(() =>
-    Object.fromEntries(BUCKETS.map((b) => [b, String(initial[b])])),
+    Object.fromEntries(groups.map((g) => [g.id, String(g.targetPercent)])),
   );
-  const parsed = Object.fromEntries(BUCKETS.map((b) => [b, Number(values[b])])) as Record<
-    Bucket,
-    number
-  >;
-  const total = Math.round(BUCKETS.reduce((s, b) => s + (parsed[b] || 0), 0) * 100) / 100;
+  const parsed = Object.fromEntries(groups.map((g) => [g.id, Number(values[g.id] ?? 0)]));
+  const total = Math.round(groups.reduce((s, g) => s + (parsed[g.id] || 0), 0) * 100) / 100;
   return (
     <form
       onSubmit={(e: FormEvent) => {
@@ -47,15 +45,17 @@ function GoalsForm({
       }}
     >
       <div className="goal-inputs">
-        {BUCKETS.map((b) => (
-          <label key={b} className="goal-input">
-            <span>{BUCKET_LABELS[b]}</span>
+        {groups.map((g) => (
+          <label key={g.id} className="goal-input">
+            <span>
+              <span className={`swatch chart-${groupColour(g)}`} aria-hidden="true" /> {g.name}
+            </span>
             <span className="input-suffix">
               <input
                 inputMode="decimal"
-                value={values[b]}
-                aria-label={`${BUCKET_LABELS[b]} goal (% of income)`}
-                onChange={(e) => setValues((v) => ({ ...v, [b]: e.target.value }))}
+                value={values[g.id] ?? ''}
+                aria-label={`${g.name} goal (% of income)`}
+                onChange={(e) => setValues((v) => ({ ...v, [g.id]: e.target.value }))}
               />
               %
             </span>
@@ -74,51 +74,65 @@ function GoalsForm({
   );
 }
 
+function InlineRename({
+  value,
+  label,
+  onSave,
+  onCancel,
+}: {
+  value: string;
+  label: string;
+  onSave: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(value);
+  return (
+    <form
+      className="cat-rename"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(name);
+      }}
+    >
+      <input value={name} autoFocus aria-label={label} onChange={(e) => setName(e.target.value)} />
+      <button type="submit" className="btn btn-sm btn-primary">
+        Save
+      </button>
+      <button type="button" className="btn btn-sm" onClick={onCancel}>
+        Cancel
+      </button>
+    </form>
+  );
+}
+
 function CategoryRow({
   cat,
-  bucket,
+  groupId,
+  spending,
   run,
 }: {
   cat: Category;
-  bucket: SpendingBucket | 'income';
-  run: ReturnType<typeof useStatus>['run'];
+  /** The group it's listed under, or "income". */
+  groupId: string;
+  spending: BudgetGroup[];
+  run: Run;
 }) {
   const { store } = useApp();
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(cat.name);
   return (
     <li className="cat-row">
       {editing ? (
-        <form
-          className="cat-rename"
-          onSubmit={(e) => {
-            e.preventDefault();
+        <InlineRename
+          value={cat.name}
+          label={`New name for ${cat.name}`}
+          onCancel={() => setEditing(false)}
+          onSave={(name) =>
             void run(async () => {
               await renameCategory(store, cat.id, name);
               setEditing(false);
-            }, 'Renamed');
-          }}
-        >
-          <input
-            value={name}
-            autoFocus
-            aria-label={`New name for ${cat.name}`}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button type="submit" className="btn btn-sm btn-primary">
-            Save
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => {
-              setName(cat.name);
-              setEditing(false);
-            }}
-          >
-            Cancel
-          </button>
-        </form>
+            }, 'Renamed')
+          }
+        />
       ) : (
         <>
           <button
@@ -130,7 +144,7 @@ function CategoryRow({
             {cat.name}
           </button>
           <span className="cat-actions">
-            {bucket !== 'income' && (
+            {cat.kind === 'expense' && (
               <>
                 <label className="visually-hidden" htmlFor={`move-${cat.id}`}>
                   Group for {cat.name}
@@ -138,17 +152,17 @@ function CategoryRow({
                 <select
                   id={`move-${cat.id}`}
                   className="select-sm"
-                  value={bucket}
+                  value={groupId}
                   onChange={(e) =>
                     void run(
-                      () => moveCategory(store, cat.id, e.target.value as SpendingBucket),
-                      `${cat.name} moved to ${BUCKET_LABELS[e.target.value as Bucket]}`,
+                      () => moveCategory(store, cat.id, e.target.value),
+                      `${cat.name} moved to ${spending.find((g) => g.id === e.target.value)?.name ?? 'another group'}`,
                     )
                   }
                 >
-                  {SPENDING.map((b) => (
-                    <option key={b} value={b}>
-                      {BUCKET_LABELS[b]}
+                  {spending.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
                     </option>
                   ))}
                 </select>
@@ -171,30 +185,23 @@ function CategoryRow({
   );
 }
 
-function AddCategory({
-  bucket,
-  run,
-}: {
-  bucket: SpendingBucket | 'income';
-  run: ReturnType<typeof useStatus>['run'];
-}) {
+function AddCategory({ groupId, label, run }: { groupId: string; label: string; run: Run }) {
   const { store } = useApp();
   const [name, setName] = useState('');
-  const label = bucket === 'income' ? 'Income' : BUCKET_LABELS[bucket];
   return (
     <form
       className="cat-add"
       onSubmit={(e) => {
         e.preventDefault();
         void run(async () => {
-          await addCategory(store, { name, bucket });
+          await addCategory(store, { name, groupId });
           setName('');
         }, `Added to ${label}`);
       }}
     >
       <input
         value={name}
-        placeholder={bucket === 'wants' ? 'e.g. Sports' : 'New category'}
+        placeholder="New category"
         aria-label={`New ${label} category`}
         onChange={(e) => setName(e.target.value)}
       />
@@ -205,31 +212,164 @@ function AddCategory({
   );
 }
 
+function GroupCard({
+  group,
+  cats,
+  spending,
+  run,
+}: {
+  group: BudgetGroup;
+  cats: Category[];
+  spending: BudgetGroup[];
+  run: Run;
+}) {
+  const { store } = useApp();
+  const confirm = useConfirm();
+  const [renaming, setRenaming] = useState(false);
+  const hint = groupHint(group);
+  const canDelete = !BUILT_IN.has(group.id);
+  return (
+    <Card
+      title={`${group.name} · ${cats.length}`}
+      action={
+        <span className="cat-actions">
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            aria-label={`Rename group ${group.name}`}
+            onClick={() => setRenaming(true)}
+          >
+            Rename
+          </button>
+          {canDelete && (
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              aria-label={`Delete group ${group.name}`}
+              onClick={() =>
+                void (async () => {
+                  const ok = await confirm({
+                    title: `Delete the ${group.name} group?`,
+                    message:
+                      group.targetPercent > 0
+                        ? `Its ${group.targetPercent}% goal moves to what’s left over. Categories must be moved or hidden first.`
+                        : 'Categories must be moved or hidden first.',
+                    confirmLabel: 'Delete group',
+                    danger: true,
+                  });
+                  if (ok) await run(() => deleteGroup(store, group.id), `${group.name} deleted`);
+                })()
+              }
+            >
+              Delete
+            </button>
+          )}
+        </span>
+      }
+    >
+      {renaming ? (
+        <InlineRename
+          value={group.name}
+          label={`New name for the ${group.name} group`}
+          onCancel={() => setRenaming(false)}
+          onSave={(name) =>
+            void run(async () => {
+              await renameGroup(store, group.id, name);
+              setRenaming(false);
+            }, 'Group renamed')
+          }
+        />
+      ) : (
+        hint && <p className="xs faint">{hint}</p>
+      )}
+      <ul className="list cat-list">
+        {cats.map((c) => (
+          <CategoryRow key={c.id} cat={c} groupId={group.id} spending={spending} run={run} />
+        ))}
+      </ul>
+      <AddCategory groupId={group.id} label={group.name} run={run} />
+    </Card>
+  );
+}
+
+function AddGroupForm({ run, full }: { run: Run; full: boolean }) {
+  const { store } = useApp();
+  const [name, setName] = useState('');
+  return (
+    <Card title="Add a group">
+      <p className="small muted">
+        For example “Business”, “Car” or “Kids”. New groups start at 0%: give them a share in the
+        goals above.
+      </p>
+      {full ? (
+        <p className="small">You have the maximum of {MAX_BUDGET_GROUPS} groups.</p>
+      ) : (
+        <form
+          className="cat-add"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(async () => {
+              await addGroup(store, { name });
+              setName('');
+            }, 'Group added');
+          }}
+        >
+          <input
+            value={name}
+            placeholder="Group name"
+            aria-label="New group name"
+            onChange={(e) => setName(e.target.value)}
+          />
+          <button type="submit" className="btn btn-sm" disabled={!name.trim()}>
+            Add group
+          </button>
+        </form>
+      )}
+    </Card>
+  );
+}
+
 export function CategoriesPage() {
   const { store } = useApp();
   const data = useFinanceData();
   const { run, statusNode } = useStatus();
   if (!data) return <Loading />;
-  // Business-workspace categories belong to the hidden Business feature.
-  const visible = data.categories.filter((c) => c.workspace !== 'business');
-  const inGroup = (group: Category['group']) =>
+  const groups = data.budgetGroups;
+  const spending = groups.filter((g) => g.kind === 'spending');
+  const spendingIds = new Set(spending.map((g) => g.id));
+  // Business-workspace categories belong to the hidden Business feature unless put in a group.
+  const visible = data.categories.filter((c) => c.workspace !== 'business' || c.budgetGroupId);
+  const byName = (a: Category, b: Category) => a.name.localeCompare(b.name);
+  const inGroup = (groupId: string) =>
     visible
-      .filter((c) => !c.archived && c.group === group)
-      .sort((a, b) => a.name.localeCompare(b.name));
-  const hidden = visible.filter((c) => c.archived).sort((a, b) => a.name.localeCompare(b.name));
+      .filter(
+        (c) =>
+          !c.archived && c.kind === 'expense' && groupIdForCategory(c, spendingIds) === groupId,
+      )
+      .sort(byName);
+  const ungrouped = visible
+    .filter((c) => !c.archived && c.kind === 'expense' && !groupIdForCategory(c, spendingIds))
+    .sort(byName);
+  const income = visible
+    .filter((c) => !c.archived && c.kind === 'income' && !groupIdForCategory(c, spendingIds))
+    .sort(byName);
+  const incomeInGroups = visible.filter(
+    (c) => !c.archived && c.kind === 'income' && groupIdForCategory(c, spendingIds),
+  );
+  const hidden = visible.filter((c) => c.archived).sort(byName);
   const suggestions = missingSuggestions(data.categories);
 
   return (
     <>
-      <PageHeader title="Categories" subtitle="Your five groups and what goes in each" />
+      <PageHeader title="Categories" subtitle="Your groups and what goes in each" />
 
       <Card title="Group goals">
         <p className="small muted">
-          How much of your income each group should get. Buffer is what you keep unspent.
+          How much of your income each group should get. The last one is what you keep unspent.
         </p>
         <GoalsForm
-          key={data.settings.updatedAt}
-          initial={bucketTargets(data.settings)}
+          key={groups.map((g) => `${g.id}:${g.targetPercent}`).join('|')}
+          groups={groups}
           onSave={(t) => void run(() => setGroupTargets(store, t), 'Goals saved')}
         />
       </Card>
@@ -242,43 +382,47 @@ export function CategoriesPage() {
               type="button"
               className="btn btn-sm"
               onClick={() =>
-                void run(async () => {
-                  const n = await addSuggestedCategories(store);
-                  return n;
-                }, 'Suggested categories added')
+                void run(() => addSuggestedCategories(store), 'Suggested categories added')
               }
             >
               Add them
             </button>
           }
         >
-          {suggestions.length} suggested categories (like Gym, Snacks, Sports and RF costs) aren’t
-          in your list yet.
+          {suggestions.length} suggested categories aren’t in your list yet.
         </Alert>
       )}
 
-      {SPENDING.map((b) => {
-        const cats = inGroup(BUCKET_GROUP[b]);
-        return (
-          <Card key={b} title={`${BUCKET_LABELS[b]} · ${cats.length}`}>
-            <p className="xs faint">{BUCKET_HINT[b]}</p>
-            <ul className="list cat-list">
-              {cats.map((c) => (
-                <CategoryRow key={c.id} cat={c} bucket={b} run={run} />
-              ))}
-            </ul>
-            <AddCategory bucket={b} run={run} />
-          </Card>
-        );
-      })}
+      {spending.map((g) => (
+        <GroupCard key={g.id} group={g} cats={inGroup(g.id)} spending={spending} run={run} />
+      ))}
 
-      <Card title={`Income · ${inGroup('income').length}`}>
+      {ungrouped.length > 0 && (
+        <Card title={`Not in a group · ${ungrouped.length}`}>
+          <p className="xs faint">Spending here isn’t counted in any group. Move it to one.</p>
+          <ul className="list cat-list">
+            {ungrouped.map((c) => (
+              <CategoryRow key={c.id} cat={c} groupId="" spending={spending} run={run} />
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      <AddGroupForm run={run} full={groups.length >= MAX_BUDGET_GROUPS} />
+
+      <Card title={`Income · ${income.length}`}>
         <ul className="list cat-list">
-          {inGroup('income').map((c) => (
-            <CategoryRow key={c.id} cat={c} bucket="income" run={run} />
+          {income.map((c) => (
+            <CategoryRow key={c.id} cat={c} groupId="income" spending={spending} run={run} />
           ))}
         </ul>
-        <AddCategory bucket="income" run={run} />
+        {incomeInGroups.length > 0 && (
+          <p className="xs faint">
+            {incomeInGroups.map((c) => c.name).join(', ')}: money coming back into a group, so it
+            reduces that group instead of counting as income.
+          </p>
+        )}
+        <AddCategory groupId="income" label="Income" run={run} />
       </Card>
 
       {hidden.length > 0 && (

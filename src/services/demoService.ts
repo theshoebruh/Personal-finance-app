@@ -114,8 +114,8 @@ export async function loadDemoData(
     await tx('coffee', 6, 'Joe’s Barista', 5_000, 'expense', 'cat-coffee');
     await tx('youtube', 2, 'YouTube Premium', 8_200, 'expense', 'cat-subscriptions');
     await tx('padel', 7, 'Padel court booking', 30_000, 'expense', 'cat-sports');
-    await tx('prints', 5, 'Print shop – stickers', 23_200, 'expense', 'cat-rf-stock');
-    await tx('stock-art', 6, 'Stock graphics licence', 12_000, 'expense', 'cat-rf-design');
+    await tx('prints', 5, 'Print shop – stickers', 23_200, 'expense', 'cat-shopping');
+    await tx('stock-art', 6, 'Stock graphics licence', 12_000, 'expense', 'cat-software');
     const [, savingsLeg] = await createTransfer(
       store,
       { fromAccountId: main.id, toAccountId: savings.id, date: day(2), amountCents: 100_000 },

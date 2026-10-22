@@ -18,6 +18,7 @@ const TABLE_LABELS: Record<string, string> = {
   importBatches: 'Import',
   importProfiles: 'Import column mapping',
   categorisationRules: 'Categorisation rule',
+  budgetGroups: 'Budget group',
   projects: 'Project',
   invoices: 'Invoice',
   settings: 'Settings',

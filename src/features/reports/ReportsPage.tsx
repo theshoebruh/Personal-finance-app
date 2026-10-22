@@ -6,7 +6,7 @@ import { buildDashboard } from '@/domain/calculations/dashboard';
 import { categoryBreakdown } from '@/domain/calculations/breakdown';
 import { addMonths, endOfMonth, formatDisplayDate, startOfMonth } from '@/domain/dates';
 import { Card, Empty, Loading } from '@/components/ui';
-import { BUCKET_LABELS } from '@/domain/models';
+import { isGoalToReach } from '@/domain/calculations/buckets';
 import { useBuckets } from '../home/useBuckets';
 import { PageHeader } from '@/components/PageHeader';
 import { BudgetBars, Donut, IncomeSpendingBars, type ChartColour } from '@/components/charts';
@@ -66,7 +66,7 @@ export function ReportsPage() {
     spendingByCategory(data.transactions, view, thisMonth, endOfMonth(thisMonth)),
     (id) => (id ? (cats.get(id)?.name ?? 'Unknown') : 'Uncategorised'),
   );
-  const groupLines = buckets.summary.lines.filter((l) => l.bucket !== 'buffer');
+  const groupLines = buckets.summary.lines.filter((l) => l.group.kind === 'spending');
 
   return (
     <>
@@ -120,12 +120,12 @@ export function ReportsPage() {
             <BudgetBars
               label="Spending per group against its goal"
               lines={groupLines.map((l) => ({
-                key: l.bucket,
-                label: `${BUCKET_LABELS[l.bucket]} (goal ${l.targetPercent}%)`,
+                key: l.group.id,
+                label: `${l.group.name} (goal ${l.targetPercent}%)`,
                 limitCents: l.targetCents,
                 spentCents: l.actualCents,
                 // Saving more than the goal isn't "over": show it as reached.
-                remainingCents: l.bucket === 'savings' ? Math.max(0, l.leftCents) : l.leftCents,
+                remainingCents: isGoalToReach(l.group) ? Math.max(0, l.leftCents) : l.leftCents,
               }))}
             />
           )}

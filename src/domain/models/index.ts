@@ -83,31 +83,6 @@ export const CATEGORY_GROUP_LABELS: Record<CategoryGroup, string> = {
   business_income: 'Side business income',
 };
 
-/**
- * The five budget groups shown to the user. Four are spending groups backed by a category group;
- * Buffer is what's left over (income − all spending), so it has no categories.
- */
-export const BUCKETS = ['needs', 'wants', 'savings', 'rf', 'buffer'] as const;
-export type Bucket = (typeof BUCKETS)[number];
-export type SpendingBucket = Exclude<Bucket, 'buffer'>;
-export const BUCKET_LABELS: Record<Bucket, string> = {
-  needs: 'Needs',
-  wants: 'Wants',
-  savings: 'Savings',
-  rf: 'RF',
-  buffer: 'Buffer',
-};
-export const BUCKET_GROUP: Record<SpendingBucket, CategoryGroup> = {
-  needs: 'essential',
-  wants: 'discretionary',
-  savings: 'savings',
-  rf: 'business_expense',
-};
-export function bucketForGroup(group: CategoryGroup): SpendingBucket | null {
-  const entry = Object.entries(BUCKET_GROUP).find(([, g]) => g === group);
-  return entry ? (entry[0] as SpendingBucket) : null;
-}
-
 export const categorySchema = z.object({
   id,
   name: z.string().trim().min(1).max(60),
@@ -115,9 +90,33 @@ export const categorySchema = z.object({
   group: z.enum(CATEGORY_GROUPS),
   workspace: z.enum(['personal', 'business', 'both']),
   archived: z.boolean(),
+  /**
+   * The budget group (Needs, Wants, a custom one…) this category counts towards. Absent/null in
+   * data from before custom groups: then it follows `group` (see `groupIdForCategory`).
+   */
+  budgetGroupId: id.nullable().optional(),
   ...recordMeta,
 });
 export type Category = z.infer<typeof categorySchema>;
+
+// ---------------------------------------------------------------- Budget groups
+
+/** At most this many groups (the charts need clearly different colours). */
+export const MAX_BUDGET_GROUPS = 8;
+
+export const budgetGroupSchema = z.object({
+  id,
+  name: z.string().trim().min(1, 'Enter a name').max(40),
+  /** "spending" groups hold categories; the one "leftover" group (Buffer) is income − spending. */
+  kind: z.enum(['spending', 'leftover']),
+  /** Chart colour slot (see --chart-N); 0 is the neutral "other" colour. */
+  colour: z.number().int().min(0).max(6),
+  /** Goal as % of income. All groups together should add up to 100. */
+  targetPercent: z.number().min(0).max(100),
+  sortOrder: z.number().int().min(0).max(1000),
+  ...recordMeta,
+});
+export type BudgetGroup = z.infer<typeof budgetGroupSchema>;
 
 // ---------------------------------------------------------------- Transactions
 

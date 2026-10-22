@@ -35,7 +35,7 @@ async function expectAvailable(text: string) {
 describe('core flow', () => {
   it('shows onboarding on first launch', async () => {
     render(<App db={db} store={store} initialPath="/" />);
-    expect(await screen.findByText(/your money in five groups/i)).toBeInTheDocument();
+    expect(await screen.findByText(/your money, sorted into groups/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /explore with demo data/i })).toBeInTheDocument();
   });
 

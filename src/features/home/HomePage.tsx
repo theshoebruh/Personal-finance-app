@@ -1,7 +1,6 @@
 import { Link, useNavigate } from 'react-router';
 import { useApp } from '@/app/AppContext';
-import { BUCKET_LABELS, type Bucket } from '@/domain/models';
-import type { BucketLine } from '@/domain/calculations/buckets';
+import { type GroupLine, isGoalToReach } from '@/domain/calculations/buckets';
 import { formatZAR } from '@/domain/money';
 import { currentBalance } from '@/domain/calculations/balances';
 import { loadDemoData } from '@/services/demoService';
@@ -10,40 +9,35 @@ import { Icon } from '@/components/icons';
 import { openGroup, shouldAnimateClick } from '@/app/viewTransition';
 import { PageHeader } from '@/components/PageHeader';
 import { Donut, Ring, fraction, type DonutSegment, type RingTone } from '@/components/charts';
-import { BUCKET_COLOUR, BUCKET_HINT, useBuckets } from './useBuckets';
+import { UNCATEGORISED_COLOUR, groupColour, groupHint, useBuckets } from './useBuckets';
 
 /**
- * Rings always use the group's own colour so the five groups are easy to tell apart; whether a
+ * Rings always use the group's own colour so the groups are easy to tell apart; whether a
  * group is over, nearly at or past its goal is said in words (see `LeftText`) and, when over, by
  * the card's red edge.
  */
-export function ringTone(line: BucketLine): RingTone {
-  return `chart-${BUCKET_COLOUR[line.bucket]}`;
+export function ringTone(line: GroupLine): RingTone {
+  return `chart-${groupColour(line.group)}`;
 }
 
 export function percentText(p: number | null): string {
   return p === null ? '–' : `${p.toLocaleString('en-ZA', { maximumFractionDigits: 1 })}%`;
 }
 
-/** Groups you want to reach (Savings, Buffer) rather than stay under. */
-function isGoalToReach(line: BucketLine): boolean {
-  return line.bucket === 'savings' || line.bucket === 'buffer';
-}
-
 /** Over budget: a spending group past its goal, or less than nothing left over. */
-export function isOver(line: BucketLine): boolean {
-  if (line.bucket === 'buffer') return line.actualCents < 0;
-  return !isGoalToReach(line) && line.leftCents < 0;
+export function isOver(line: GroupLine): boolean {
+  if (line.group.kind === 'leftover') return line.actualCents < 0;
+  return !isGoalToReach(line.group) && line.leftCents < 0;
 }
 
 /**
- * Status in words. Needs, Wants, RF: "R152 left", "Almost at goal · R40 left" (85%+), "R796
+ * Status in words. Spending groups: "R152 left", "Almost at goal · R40 left" (85%+), "R796
  * over". Savings and Buffer count up: "R85 to go" or "Goal reached ✓"; a negative Buffer means
  * spending is more than income.
  */
-export function LeftText({ line }: { line: BucketLine }) {
-  if (isGoalToReach(line)) {
-    if (line.bucket === 'buffer' && line.actualCents < 0) {
+export function LeftText({ line }: { line: GroupLine }) {
+  if (isGoalToReach(line.group)) {
+    if (line.group.kind === 'leftover' && line.actualCents < 0) {
       return (
         <span className="negative">
           Spent <Money cents={-line.actualCents} /> more than income
@@ -78,15 +72,16 @@ export function LeftText({ line }: { line: BucketLine }) {
   );
 }
 
-function GroupCard({ line }: { line: BucketLine }) {
-  const name = BUCKET_LABELS[line.bucket];
+function GroupCard({ line }: { line: GroupLine }) {
+  const name = line.group.name;
+  const hint = groupHint(line.group);
   const over = isOver(line);
   const navigate = useNavigate();
-  const to = `/group/${line.bucket}`;
+  const to = `/group/${line.group.id}`;
   return (
     <Link
       to={to}
-      className={`group-card group-tone-${BUCKET_COLOUR[line.bucket]}`}
+      className={`group-card group-tone-${groupColour(line.group)}`}
       data-over={over || undefined}
       onClick={(e) => {
         if (!shouldAnimateClick(e)) return;
@@ -107,7 +102,7 @@ function GroupCard({ line }: { line: BucketLine }) {
         <span className="group-card-title">
           {name} <span className="faint">· goal {line.targetPercent}%</span>
         </span>
-        <span className="group-card-hint">{BUCKET_HINT[line.bucket]}</span>
+        {hint && <span className="group-card-hint">{hint}</span>}
         <span className="group-card-amounts">
           <Money cents={line.actualCents} /> <span className="faint">of</span>{' '}
           <Money cents={line.targetCents} />
@@ -135,10 +130,11 @@ export function HomePage() {
       <>
         <PageHeader title="Welcome" />
         <Card className="hero onboarding">
-          <h2>Your money in five groups</h2>
+          <h2>Your money, sorted into groups</h2>
           <p className="muted">
-            Import your bank statement and every transaction is sorted into Needs, Wants, Savings
-            and RF. You see what you spent, what’s left, and how close you are to your goals.
+            Import your bank statement and every transaction is sorted into Needs, Wants and
+            Savings, or groups of your own. You see what you spent, what’s left, and how close you
+            are to your goals.
           </p>
           <ol className="steps-list">
             <li>
@@ -187,16 +183,16 @@ export function HomePage() {
     );
   }
 
-  const spendLines = summary.lines.filter((l) => l.bucket !== 'buffer');
-  const buffer = summary.lines.find((l) => l.bucket === 'buffer')!;
+  const spendLines = summary.lines.filter((l) => l.group.kind === 'spending');
+  const leftover = summary.lines.find((l) => l.group.kind === 'leftover');
   const segments: DonutSegment[] = [
     ...spendLines
       .filter((l) => l.actualCents > 0)
       .map((l) => ({
-        key: l.bucket,
-        label: BUCKET_LABELS[l.bucket],
+        key: l.group.id,
+        label: l.group.name,
         cents: l.actualCents,
-        colour: BUCKET_COLOUR[l.bucket as Bucket],
+        colour: groupColour(l.group),
       })),
     ...(summary.uncategorisedCents > 0
       ? [
@@ -204,7 +200,7 @@ export function HomePage() {
             key: 'uncategorised',
             label: 'No category yet',
             cents: summary.uncategorisedCents,
-            colour: BUCKET_COLOUR.uncategorised,
+            colour: UNCATEGORISED_COLOUR,
           },
         ]
       : []),
@@ -306,9 +302,9 @@ export function HomePage() {
       <h2 className="section-title">Groups</h2>
       <div className="group-grid">
         {spendLines.map((l) => (
-          <GroupCard key={l.bucket} line={l} />
+          <GroupCard key={l.group.id} line={l} />
         ))}
-        <GroupCard line={buffer} />
+        {leftover && <GroupCard line={leftover} />}
       </div>
 
       {summary.incomeByCategory.length > 0 && (

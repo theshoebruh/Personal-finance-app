@@ -1,31 +1,34 @@
 import { useMemo } from 'react';
 import { useApp, useFinanceData } from '@/app/AppContext';
-import { bucketSummary } from '@/domain/calculations/buckets';
+import { groupSummary } from '@/domain/calculations/buckets';
 import { budgetPeriod, withReceivedPaydays } from '@/domain/calculations/period';
-import type { Bucket } from '@/domain/models';
+import { GROUP_IDS } from '@/domain/defaults';
+import type { BudgetGroup } from '@/domain/models';
 import type { ChartColour } from '@/components/charts';
 import { daysInclusive } from '@/domain/dates';
 
-/** Fixed chart colour per group, so a group looks the same everywhere. */
-export const BUCKET_COLOUR: Record<Bucket | 'uncategorised', ChartColour> = {
-  needs: 1, // blue
-  wants: 2, // orange
-  savings: 3, // green
-  rf: 6, // purple (amber reads as a warning)
-  buffer: 5, // pink
-  uncategorised: 0,
+/** Colour used for spending that has no category (and so no group). */
+export const UNCATEGORISED_COLOUR: ChartColour = 0;
+
+/** A group's chart colour (each group keeps the same colour everywhere). */
+export function groupColour(group: Pick<BudgetGroup, 'colour'>): ChartColour {
+  return group.colour as ChartColour;
+}
+
+const BUILT_IN_HINTS: Record<string, string> = {
+  [GROUP_IDS.needs]: 'Bills and essentials',
+  [GROUP_IDS.wants]: 'Lifestyle and treats',
+  [GROUP_IDS.savings]: 'Money put away',
+  [GROUP_IDS.buffer]: 'What’s left over',
+  [GROUP_IDS.rf]: 'Side business costs',
 };
 
-/** One-line description of each group, shown under its name. */
-export const BUCKET_HINT: Record<Bucket, string> = {
-  needs: 'Bills and essentials',
-  wants: 'Lifestyle and treats',
-  savings: 'Money put away',
-  rf: 'Side business costs',
-  buffer: 'What’s left over',
-};
+/** One-line description under a group's name (custom groups have none unless it's leftover). */
+export function groupHint(group: Pick<BudgetGroup, 'id' | 'kind'>): string | null {
+  return BUILT_IN_HINTS[group.id] ?? (group.kind === 'leftover' ? 'What’s left over' : null);
+}
 
-/** The current pay period (or month) and its five-group summary. */
+/** The current pay period (or month) and its groups summary. */
 export function useBuckets() {
   const { today } = useApp();
   const data = useFinanceData();
@@ -33,8 +36,8 @@ export function useBuckets() {
     if (!data) return null;
     const pay = withReceivedPaydays(today, data.settings, data.recurringRules, data.transactions);
     const period = budgetPeriod(today, pay);
-    const summary = bucketSummary({
-      settings: data.settings,
+    const summary = groupSummary({
+      groups: data.budgetGroups,
       categories: data.categories,
       accounts: data.accounts,
       transactions: data.transactions,
