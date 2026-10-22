@@ -50,6 +50,32 @@ export function pendingTotal(account: Account, transactions: readonly Transactio
   return total;
 }
 
+export interface CurrentBalance {
+  /** Posted balance across active spendable accounts, like a bank's "Balance". */
+  postedCents: Cents;
+  /** Pending transactions in those accounts (negative when money is on its way out). */
+  pendingCents: Cents;
+  /** Posted + pending, like a bank's "Available" (before any holds the app can't see). */
+  afterPendingCents: Cents;
+  accountCount: number;
+}
+
+/** What is in your spendable accounts right now (savings and archived accounts excluded). */
+export function currentBalance(
+  accounts: readonly Account[],
+  transactions: readonly Transaction[],
+): CurrentBalance {
+  const spendable = accounts.filter((a) => a.active && a.includeInSpendable);
+  const posted = spendable.reduce((s, a) => s + accountBalance(a, transactions), 0);
+  const pending = spendable.reduce((s, a) => s + pendingTotal(a, transactions), 0);
+  return {
+    postedCents: posted,
+    pendingCents: pending,
+    afterPendingCents: posted + pending,
+    accountCount: spendable.length,
+  };
+}
+
 export interface ReconciliationStatus {
   reconciledDate: IsoDate;
   statementBalanceCents: Cents;

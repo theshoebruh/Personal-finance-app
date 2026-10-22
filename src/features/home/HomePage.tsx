@@ -3,6 +3,7 @@ import { useApp } from '@/app/AppContext';
 import { BUCKET_LABELS, type Bucket } from '@/domain/models';
 import type { BucketLine } from '@/domain/calculations/buckets';
 import { formatZAR } from '@/domain/money';
+import { currentBalance } from '@/domain/calculations/balances';
 import { loadDemoData } from '@/services/demoService';
 import { Alert, Card, CountUpMoney, DateText, Loading, Money, useStatus } from '@/components/ui';
 import { Icon } from '@/components/icons';
@@ -126,6 +127,8 @@ export function HomePage() {
   const { run, statusNode } = useStatus();
   if (!buckets) return <Loading />;
   const { data, period, summary, dayNumber, totalDays } = buckets;
+  const balance = currentBalance(data.accounts, data.transactions);
+  const sinceWhen = period.mode === 'pay_period' ? 'Since payday' : 'This month';
 
   if (data.accounts.length === 0) {
     return (
@@ -227,10 +230,21 @@ export function HomePage() {
       )}
 
       <Card className="hero">
-        <p className="hero-label">Left this period</p>
-        <p className="hero-amount">
-          <CountUpMoney cents={summary.leftCents} countKey="home-left" split />
+        <p className="hero-label">
+          Current balance
+          {balance.accountCount > 1 && (
+            <span className="hero-label-note"> · {balance.accountCount} spendable accounts</span>
+          )}
         </p>
+        <p className="hero-amount">
+          <CountUpMoney cents={balance.postedCents} countKey="home-balance" split />
+        </p>
+        {balance.pendingCents !== 0 && (
+          <p className="hero-sub">
+            <Money cents={balance.afterPendingCents} /> after{' '}
+            <Money cents={Math.abs(balance.pendingCents)} /> pending
+          </p>
+        )}
         <div className="totals-row">
           <div>
             <span className="totals-label">Income</span>
@@ -241,10 +255,23 @@ export function HomePage() {
             <CountUpMoney cents={summary.expenseCents} countKey="home-spent" />
           </div>
           <div>
-            <span className="totals-label">Left</span>
-            <CountUpMoney cents={summary.leftCents} countKey="home-left-2" tone />
+            <span className="totals-label">Left this period</span>
+            <CountUpMoney cents={summary.leftCents} countKey="home-left" tone />
           </div>
         </div>
+        <p className="period-explainer small muted">
+          {summary.leftCents < 0 ? (
+            <>
+              {sinceWhen}, <Money cents={-summary.leftCents} /> more went out than came in. That
+              comes out of money you already had, not an overdraft.
+            </>
+          ) : (
+            <>
+              {sinceWhen}, you’ve spent <Money cents={summary.leftCents} /> less than came in.
+            </>
+          )}
+          {summary.pendingOutCents > 0 && <> Pending payments aren’t in Spent until they clear.</>}
+        </p>
         {segments.length > 0 && (
           <Donut
             segments={segments}
@@ -256,12 +283,6 @@ export function HomePage() {
         )}
       </Card>
 
-      {summary.pendingOutCents > 0 && (
-        <p className="small muted pending-note">
-          <Money cents={summary.pendingOutCents} /> more is pending at your bank and isn’t counted
-          until it clears.
-        </p>
-      )}
       {summary.uncategorisedCents > 0 && (
         <Alert
           tone="warning"

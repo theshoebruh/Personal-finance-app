@@ -3001,3 +3001,14 @@ html[data-nav='back']::view-transition-new(root) {
 html[data-nav] .main > * {
   animation: none;
 }
+
+/* Current balance vs this period's result (Home hero). */
+.hero-label-note {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.period-explainer {
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+  line-height: 1.45;
+}
