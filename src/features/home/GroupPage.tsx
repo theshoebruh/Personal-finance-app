@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useApp } from '@/app/AppContext';
 import { GROUP_IDS } from '@/domain/defaults';
@@ -12,6 +13,23 @@ import { Donut, Ring, fraction, shadeOf } from '@/components/charts';
 import { CategoryOptions, lookup } from '../shared';
 import { groupColour, groupHint, useBuckets } from './useBuckets';
 import { LeftText, percentText, ringTone } from './HomePage';
+import {
+  TRANSACTION_SORTS,
+  type TransactionSort,
+  isTransactionSort,
+  sortTransactions,
+} from './sortTransactions';
+
+const SORT_KEY = 'groupTransactionsSort';
+
+function readSort(): TransactionSort {
+  try {
+    const v = localStorage.getItem(SORT_KEY);
+    return isTransactionSort(v) ? v : 'newest';
+  } catch {
+    return 'newest';
+  }
+}
 
 export function GroupPage() {
   const { bucket: param } = useParams();
@@ -19,6 +37,16 @@ export function GroupPage() {
   const buckets = useBuckets();
   const { run, statusNode } = useStatus();
   const navigate = useNavigate();
+  const [sort, setSortState] = useState<TransactionSort>(readSort);
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const setSort = (v: TransactionSort) => {
+    setSortState(v);
+    try {
+      localStorage.setItem(SORT_KEY, v);
+    } catch {
+      // Storage unavailable (private mode): the choice just isn't remembered.
+    }
+  };
   if (!buckets) return <Loading />;
   const line = buckets.summary.lines.find((l) => l.group.id === param);
   if (!line) {
@@ -51,16 +79,24 @@ export function GroupPage() {
   };
   const txns = isLeftover
     ? []
-    : data.transactions
-        .filter(
-          (t) =>
-            isActual(t) &&
-            (t.type === 'expense' || t.type === 'refund' || t.type === 'income') &&
-            t.date >= period.start &&
-            t.date <= period.end &&
-            inThisGroup(t.categoryId),
-        )
-        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    : data.transactions.filter(
+        (t) =>
+          isActual(t) &&
+          (t.type === 'expense' || t.type === 'refund' || t.type === 'income') &&
+          t.date >= period.start &&
+          t.date <= period.end &&
+          inThisGroup(t.categoryId),
+      );
+  const catName = (id: string | null) => (id ? (categoriesById.get(id)?.name ?? '') : '');
+  const groupCategories = [...new Set(txns.map((t) => t.categoryId))]
+    .filter((id): id is string => !!id)
+    .sort((a, b) => catName(a).localeCompare(catName(b)));
+  const filter = groupCategories.includes(categoryFilter) ? categoryFilter : '';
+  const shown = sortTransactions(
+    filter ? txns.filter((t) => t.categoryId === filter) : txns,
+    sort,
+    catName,
+  );
 
   return (
     <>
@@ -171,11 +207,46 @@ export function GroupPage() {
               </Link>
             }
           >
+            {txns.length > 1 && (
+              <div className="list-controls">
+                <label className="field-inline">
+                  <span>Sort</span>
+                  <select
+                    className="select-sm"
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value as TransactionSort)}
+                  >
+                    {Object.entries(TRANSACTION_SORTS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {groupCategories.length > 1 && (
+                  <label className="field-inline">
+                    <span>Category</span>
+                    <select
+                      className="select-sm"
+                      value={filter}
+                      onChange={(e) => setCategoryFilter(e.target.value)}
+                    >
+                      <option value="">All categories</option>
+                      {groupCategories.map((id) => (
+                        <option key={id} value={id}>
+                          {catName(id)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
             {txns.length === 0 ? (
               <Empty title={`Nothing in ${name} yet this period.`} />
             ) : (
               <ul className="list txn-cat-list">
-                {txns.map((t) => (
+                {shown.map((t) => (
                   <li key={t.id}>
                     <div className="primary">
                       <div className="title">{t.description}</div>

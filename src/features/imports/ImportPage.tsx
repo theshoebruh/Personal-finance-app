@@ -774,7 +774,7 @@ function ReviewStep({
       rows.map((r) => {
         if (r.index !== index) return r;
         const { pendingMatch: _drop, ...rest } = r;
-        return { ...rest, status: 'new', include: true };
+        return { ...rest, status: 'new', include: true, keepSeparate: true };
       }),
     );
   const toggle = (index: number) =>
