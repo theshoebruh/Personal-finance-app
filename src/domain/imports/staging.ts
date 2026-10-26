@@ -40,6 +40,8 @@ export interface StagedRow extends NormalisedRow {
   include: boolean;
   duplicateOf?: DuplicateMatch;
   pendingMatch?: PendingMatch;
+  /** The user said this isn't the posted version of a pending one ("It's a different transaction"). */
+  keepSeparate?: boolean;
   /** Other lines in this file that look identical (e.g. two same-day coffees). Kept, but flagged. */
   identicalLines: number[];
   /** Why this row may be a transfer between your own accounts (see transfers.ts). */

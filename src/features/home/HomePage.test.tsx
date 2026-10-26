@@ -80,6 +80,32 @@ it('opens a group and moves a transaction to another category', async () => {
   expect(await screen.findByText(/Nothing in Wants yet/)).toBeInTheDocument();
 });
 
+it('sorts and filters a group’s transactions', async () => {
+  const user = userEvent.setup({ delay: null });
+  const acc = (await store.accounts.list())[0]!;
+  const today = todayInAppZone();
+  await createTransaction(store, {
+    accountId: acc.id,
+    date: today,
+    description: 'Arcade',
+    amountCents: 50_000,
+    type: 'expense',
+    categoryId: 'cat-entertainment',
+  });
+  render(<App db={db} store={store} initialPath="/group/grp-wants" />);
+  const titles = () =>
+    [...document.querySelectorAll('.txn-cat-list .title')].map((e) => e.textContent);
+  // Spar snacks R4,000, Arcade R500.
+  await user.selectOptions(await screen.findByLabelText('Sort'), 'largest');
+  expect(titles()).toEqual(['Spar snacks', 'Arcade']);
+  await user.selectOptions(screen.getByLabelText('Sort'), 'name');
+  expect(titles()).toEqual(['Arcade', 'Spar snacks']);
+  await user.selectOptions(screen.getByLabelText('Sort'), 'smallest');
+  expect(titles()).toEqual(['Arcade', 'Spar snacks']);
+  await user.selectOptions(screen.getByLabelText('Category'), 'cat-snacks');
+  expect(titles()).toEqual(['Spar snacks']);
+});
+
 it('edits group goals on the Categories page', async () => {
   const user = userEvent.setup({ delay: null });
   render(<App db={db} store={store} initialPath="/categories" />);

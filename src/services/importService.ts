@@ -18,6 +18,7 @@ import {
 import type { FinanceStore } from '@/data/repositories/types';
 import { type Clock, DomainError, newId, systemClock } from './common';
 import { updateAccount } from './accountsService';
+import { KEEP_SEPARATE_TAG } from './pendingCleanup';
 import {
   asTransferLeg,
   convertedByTag,
@@ -231,7 +232,10 @@ export async function commitImport(
     importBatchId: batchId,
     fingerprint: r.fingerprint!,
     ...(r.reference ? { notes: `Bank reference: ${r.reference}`.slice(0, 1000) } : {}),
-    tags: r.transactionAt ? [transactionTimeTag(r.transactionAt)] : [],
+    tags: [
+      ...(r.transactionAt ? [transactionTimeTag(r.transactionAt)] : []),
+      ...(r.keepSeparate ? [KEEP_SEPARATE_TAG] : []),
+    ],
     archived: false,
     // Imports into a demo account are demo data too, so "Clear demo data" can remove them.
     isDemo: account.isDemo,
