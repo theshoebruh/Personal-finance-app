@@ -1,7 +1,7 @@
 import type { Transaction, WorkspaceView } from '../models';
 import { type IsoDate, isWithin } from '../dates';
 import type { Cents } from '../money';
-import { isActual } from './balances';
+import { isActual, isPending } from './balances';
 
 export function inView(workspace: Transaction['workspace'], view: WorkspaceView): boolean {
   return view === 'combined' || workspace === view;
@@ -97,10 +97,12 @@ export function spendingByCategory(
   view: WorkspaceView,
   start: IsoDate,
   end: IsoDate,
+  opts: { includePending?: boolean } = {},
 ): Map<string | null, Cents> {
   const out = new Map<string | null, Cents>();
+  const counts = (t: Transaction) => isActual(t) || (!!opts.includePending && isPending(t));
   for (const t of transactions) {
-    if (!isActual(t) || !inView(t.workspace, view) || !isWithin(t.date, start, end)) continue;
+    if (!counts(t) || !inView(t.workspace, view) || !isWithin(t.date, start, end)) continue;
     if (t.type !== 'expense' && t.type !== 'refund') continue;
     out.set(t.categoryId, (out.get(t.categoryId) ?? 0) - t.amountCents);
   }

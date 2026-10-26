@@ -233,12 +233,12 @@ export function HomePage() {
           )}
         </p>
         <p className="hero-amount">
-          <CountUpMoney cents={balance.postedCents} countKey="home-balance" split />
+          <CountUpMoney cents={balance.afterPendingCents} countKey="home-balance" split />
         </p>
         {balance.pendingCents !== 0 && (
           <p className="hero-sub">
-            <Money cents={balance.afterPendingCents} /> after{' '}
-            <Money cents={Math.abs(balance.pendingCents)} /> pending
+            Includes <Money cents={Math.abs(balance.pendingCents)} /> still pending (your bank’s
+            balance before it clears: <Money cents={balance.postedCents} />)
           </p>
         )}
         <div className="totals-row">
@@ -266,7 +266,12 @@ export function HomePage() {
               {sinceWhen}, you’ve spent <Money cents={summary.leftCents} /> less than came in.
             </>
           )}
-          {summary.pendingOutCents > 0 && <> Pending payments aren’t in Spent until they clear.</>}
+          {summary.pendingOutCents > 0 && (
+            <>
+              {' '}
+              Spent includes <Money cents={summary.pendingOutCents} /> still pending.
+            </>
+          )}
         </p>
         {segments.length > 0 && (
           <Donut

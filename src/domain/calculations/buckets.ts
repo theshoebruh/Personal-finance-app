@@ -4,7 +4,7 @@ import type { IsoDate } from '../dates';
 import { type Cents, percentOf } from '../money';
 import { savingsMadeInPeriod } from './goals';
 import { spendingByCategory } from './reporting';
-import { isActual } from './balances';
+import { isActual, isPending } from './balances';
 
 /**
  * The group a category counts towards: the one it was put in, or (for data from before custom
@@ -64,7 +64,7 @@ export interface GroupSummary {
   savingsWithdrawalsCents: Cents;
   /** Sum of all goals; should be 100. */
   targetTotalPercent: number;
-  /** Spending still pending at the bank (not in any figure above until it posts), positive. */
+  /** Spending still pending at the bank (included in the figures above), positive. */
   pendingOutCents: Cents;
 }
 
@@ -95,7 +95,9 @@ export function groupSummary(input: {
     const g = cat ? groupIdForCategory(cat, spendingIds) : null;
     return { cat, g };
   };
-  const inPeriod = (t: Transaction) => isActual(t) && t.date >= start && t.date <= end;
+  // Pending purchases count too (the money is committed); they're labelled where listed.
+  const inPeriod = (t: Transaction) =>
+    (isActual(t) || isPending(t)) && t.date >= start && t.date <= end;
 
   // Spending (expenses and refunds) per group and category.
   const perGroup = new Map<string, Map<string, Cents>>(
@@ -106,7 +108,9 @@ export function groupSummary(input: {
     m.set(catId, (m.get(catId) ?? 0) + cents);
   };
   let uncategorised = 0;
-  for (const [catId, cents] of spendingByCategory(transactions, 'combined', start, end)) {
+  for (const [catId, cents] of spendingByCategory(transactions, 'combined', start, end, {
+    includePending: true,
+  })) {
     const { cat, g } = groupOf(catId);
     if (cat && g) add(g, cat.id, cents);
     else uncategorised += cents;

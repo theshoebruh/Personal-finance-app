@@ -4,9 +4,18 @@ import { useApp } from '@/app/AppContext';
 import { GROUP_IDS } from '@/domain/defaults';
 import { groupIdForCategory } from '@/domain/calculations/buckets';
 import { formatZAR } from '@/domain/money';
-import { isActual } from '@/domain/calculations/balances';
+import { isActual, isPending } from '@/domain/calculations/balances';
 import { updateTransaction } from '@/services/transactionsService';
-import { Card, CountUpMoney, DateText, Empty, Loading, Money, useStatus } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  CountUpMoney,
+  DateText,
+  Empty,
+  Loading,
+  Money,
+  useStatus,
+} from '@/components/ui';
 import { backToHome, shouldAnimateClick } from '@/app/viewTransition';
 import { PageHeader } from '@/components/PageHeader';
 import { Donut, Ring, fraction, shadeOf } from '@/components/charts';
@@ -81,7 +90,7 @@ export function GroupPage() {
     ? []
     : data.transactions.filter(
         (t) =>
-          isActual(t) &&
+          (isActual(t) || isPending(t)) &&
           (t.type === 'expense' || t.type === 'refund' || t.type === 'income') &&
           t.date >= period.start &&
           t.date <= period.end &&
@@ -252,6 +261,12 @@ export function GroupPage() {
                       <div className="title">{t.description}</div>
                       <div className="meta">
                         <DateText date={t.date} /> · {accountsById.get(t.accountId)?.name ?? ''}
+                        {t.status === 'pending' && (
+                          <>
+                            {' '}
+                            <Badge kind="forecast">Pending</Badge>
+                          </>
+                        )}
                       </div>
                       <label className="visually-hidden" htmlFor={`cat-${t.id}`}>
                         Category for {t.description}

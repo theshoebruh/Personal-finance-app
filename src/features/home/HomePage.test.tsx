@@ -106,6 +106,34 @@ it('sorts and filters a group’s transactions', async () => {
   expect(titles()).toEqual(['Spar snacks']);
 });
 
+it('counts a pending purchase everywhere and labels it Pending', async () => {
+  const acc = (await store.accounts.list())[0]!;
+  await createTransaction(store, {
+    accountId: acc.id,
+    date: todayInAppZone(),
+    description: 'Coffee (pending)',
+    amountCents: 50_000,
+    type: 'expense',
+    categoryId: 'cat-coffee',
+    status: 'pending',
+  });
+  const { unmount } = render(<App db={db} store={store} initialPath="/" />);
+  const hero = (await screen.findByText('Current balance')).closest('section')!;
+  // R4,000 posted − R500 pending.
+  await waitFor(() => expect(hero.querySelector('.hero-amount')).toHaveTextContent('3 500,00'));
+  expect(hero).toHaveTextContent(/Includes R\s?500,00 still pending/);
+  expect(hero.querySelector('.period-explainer')).toHaveTextContent(
+    /Spent includes R\s?500,00 still pending/,
+  );
+  // Wants: R4,000 + R500 pending = R4,500.
+  expect(within(screen.getByRole('link', { name: /Wants/ })).getByText('45%')).toBeInTheDocument();
+  unmount();
+
+  render(<App db={db} store={store} initialPath="/group/grp-wants" />);
+  const row = (await screen.findByText('Coffee (pending)')).closest('li')!;
+  expect(within(row).getByText('Pending')).toBeInTheDocument();
+});
+
 it('edits group goals on the Categories page', async () => {
   const user = userEvent.setup({ delay: null });
   render(<App db={db} store={store} initialPath="/categories" />);

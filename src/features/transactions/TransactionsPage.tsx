@@ -476,7 +476,15 @@ export function TransactionsPage() {
                           {t.type === 'refund' && <Badge>Refund</Badge>}
                           {t.type === 'adjustment' && <Badge>Adjustment</Badge>}
                           {t.status !== 'posted' && (
-                            <Badge kind={t.status === 'needs_review' ? 'warning' : 'default'}>
+                            <Badge
+                              kind={
+                                t.status === 'needs_review'
+                                  ? 'warning'
+                                  : t.status === 'pending'
+                                    ? 'forecast'
+                                    : 'default'
+                              }
+                            >
                               {TRANSACTION_STATUS_LABELS[t.status]}
                             </Badge>
                           )}
