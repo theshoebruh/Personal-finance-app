@@ -174,7 +174,7 @@ describe('pending card purchases', () => {
     expect((await live()).filter((t) => t.amountCents === -16_500)).toHaveLength(2);
   });
 
-  it('keeps pending spending out of the totals, and reports it separately', async () => {
+  it('counts pending spending in the totals, and says how much of it is pending', async () => {
     await importCsv(FIRST, 'first.csv');
     const [groups, categories, accounts, transactions] = await Promise.all([
       store.budgetGroups.list(),
@@ -190,7 +190,8 @@ describe('pending card purchases', () => {
       start: '2026-03-01',
       end: '2026-03-31',
     });
-    expect(s.expenseCents).toBe(10_000);
+    // R100 posted + R165 still pending.
+    expect(s.expenseCents).toBe(26_500);
     expect(s.pendingOutCents).toBe(16_500);
   });
 });
