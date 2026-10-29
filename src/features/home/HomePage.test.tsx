@@ -5,9 +5,9 @@ import { App } from '@/app/App';
 import { FinanceDb } from '@/data/local-db/db';
 import { createDexieStore } from '@/data/repositories/dexieStore';
 import type { FinanceStore } from '@/data/repositories/types';
-import { todayInAppZone } from '@/domain/dates';
+import { addDays, todayInAppZone } from '@/domain/dates';
 import { createAccount } from '@/services/accountsService';
-import { ensureInitialised } from '@/services/settingsService';
+import { ensureInitialised, updateSettings } from '@/services/settingsService';
 import { createTransaction } from '@/services/transactionsService';
 import type { GroupLine } from '@/domain/calculations/buckets';
 import { GROUP_IDS } from '@/domain/defaults';
@@ -132,6 +132,31 @@ it('counts a pending purchase everywhere and labels it Pending', async () => {
   render(<App db={db} store={store} initialPath="/group/grp-wants" />);
   const row = (await screen.findByText('Coffee (pending)')).closest('li')!;
   expect(within(row).getByText('Pending')).toBeInTheDocument();
+});
+
+it('keeps the period going on payday until the salary arrives', async () => {
+  const today = todayInAppZone();
+  const day = Number(today.slice(8, 10));
+  // Payday is today; last month's salary arrived about a month ago, this month's isn't in yet.
+  await updateSettings(store, { paydayDayOfMonth: day, budgetPeriodMode: 'pay_period' });
+  const acc = (await store.accounts.list())[0]!;
+  await createTransaction(store, {
+    accountId: acc.id,
+    date: addDays(today, -30),
+    description: 'Last month’s salary',
+    amountCents: 1_200_000,
+    type: 'income',
+    categoryId: 'cat-salary',
+  });
+  // The salary added in beforeEach (dated today) stands for this month's: remove it.
+  const todays = (await store.transactions.list()).find((t) => t.description === 'Salary')!;
+  await store.transactions.delete(todays.id);
+
+  render(<App db={db} store={store} initialPath="/" />);
+  expect(await screen.findByText(/waiting for salary/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/your salary isn’t in yet, so this period continues/),
+  ).toBeInTheDocument();
 });
 
 it('edits group goals on the Categories page', async () => {

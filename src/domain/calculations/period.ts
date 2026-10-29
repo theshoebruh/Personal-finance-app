@@ -20,6 +20,11 @@ export type PaydaySettings = Pick<AppSettings, 'paydayDayOfMonth' | 'nextPaydayO
    * replaces it, so salary paid early or late starts the new period on the day it arrived.
    */
   receivedPaydays?: readonly IsoDate[];
+  /**
+   * When salary can be recognised (a monthly salary is set), don't start a new period on the
+   * scheduled payday until it actually arrives (see `awaitingSalary`). Off by default.
+   */
+  awaitSalary?: boolean;
 };
 
 /**
@@ -29,22 +34,36 @@ export type PaydaySettings = Pick<AppSettings, 'paydayDayOfMonth' | 'nextPaydayO
 const PAYDAY_EARLY_DAYS = 10;
 const PAYDAY_LATE_DAYS = 5;
 
+/**
+ * A period waits for salary through the last day it can still count as late (5 days after the
+ * scheduled payday), then starts anyway.
+ */
+export const AWAIT_SALARY_DAYS = PAYDAY_LATE_DAYS + 1;
+
 function paydayInMonth(year: number, month: number, day: number): IsoDate {
   return makeDate(year, month, Math.min(day, daysInMonth(year, month)));
 }
 
+interface PaydaySlot {
+  scheduled: IsoDate;
+  /** The day it really happened: the earliest override or receipt near it, else the scheduled day. */
+  effective: IsoDate;
+  /** True when salary (or an override) was actually seen for this slot. */
+  seen: boolean;
+}
+
 /**
- * Effective paydays for the months around `today`: the scheduled day-of-month (clamped to the
- * month's length), replaced by the earliest override or salary receipt from 10 days before to 5 days after it.
+ * Paydays for the months around `today`: the scheduled day-of-month (clamped to the month's
+ * length), replaced by the earliest override or salary receipt from 10 days before to 5 days after.
  */
-function effectivePaydays(today: IsoDate, settings: PaydaySettings): IsoDate[] {
+function paydaySlots(today: IsoDate, settings: PaydaySettings): PaydaySlot[] {
   const day = settings.paydayDayOfMonth;
   if (day === null) return [];
   const actual = [
     ...(settings.receivedPaydays ?? []),
     ...(settings.nextPaydayOverride ? [settings.nextPaydayOverride] : []),
   ];
-  const out: IsoDate[] = [];
+  const out: PaydaySlot[] = [];
   for (let offset = -2; offset <= 2; offset++) {
     const m = parts(addMonths(startOfMonth(today), offset));
     const scheduled = paydayInMonth(m.year, m.month, day);
@@ -54,9 +73,32 @@ function effectivePaydays(today: IsoDate, settings: PaydaySettings): IsoDate[] {
         return late >= -PAYDAY_EARLY_DAYS && late <= PAYDAY_LATE_DAYS;
       })
       .sort();
-    out.push(near[0] ?? scheduled);
+    out.push({ scheduled, effective: near[0] ?? scheduled, seen: near.length > 0 });
   }
   return out;
+}
+
+/**
+ * The scheduled payday whose salary hasn't arrived yet, while still waiting for it (up to
+ * `AWAIT_SALARY_DAYS` after it); null otherwise. Until it arrives the current period keeps
+ * running, so a salary paid on the 2nd instead of the 29th doesn't start an empty period early.
+ */
+export function awaitingSalary(today: IsoDate, settings: PaydaySettings): IsoDate | null {
+  if (!settings.awaitSalary) return null;
+  const due = paydaySlots(today, settings).filter(
+    (s) => s.effective <= today || s.scheduled <= today,
+  );
+  const latest = due[due.length - 1];
+  if (!latest || latest.seen) return null;
+  const waited = diffDays(latest.scheduled, today);
+  return waited >= 0 && waited < AWAIT_SALARY_DAYS ? latest.scheduled : null;
+}
+
+function effectivePaydays(today: IsoDate, settings: PaydaySettings): IsoDate[] {
+  const waiting = awaitingSalary(today, settings);
+  return paydaySlots(today, settings)
+    .filter((s) => s.scheduled !== waiting)
+    .map((s) => s.effective);
 }
 
 /**
@@ -132,7 +174,7 @@ export interface SpendingWindow {
   end: IsoDate;
   /** Inclusive day count, counting today as one day. Always ≥ 1. */
   daysRemaining: number;
-  basis: 'next_payday' | 'month_end';
+  basis: 'next_payday' | 'month_end' | 'awaiting_salary';
   nextPayday: IsoDate | null;
 }
 
@@ -141,6 +183,16 @@ export interface SpendingWindow {
  * month-end when no payday is configured. Money received on payday starts a new window.
  */
 export function spendingWindow(today: IsoDate, settings: PaydaySettings): SpendingWindow {
+  if (awaitingSalary(today, settings)) {
+    // Salary is due any day: today is the last day the current money has to cover for sure.
+    return {
+      start: today,
+      end: today,
+      daysRemaining: 1,
+      basis: 'awaiting_salary',
+      nextPayday: null,
+    };
+  }
   const payday = nextPayday(today, settings);
   const end = payday ? addDays(payday, -1) : endOfMonth(today);
   return {
@@ -156,6 +208,8 @@ export interface BudgetPeriod {
   start: IsoDate;
   end: IsoDate;
   mode: 'calendar_month' | 'pay_period';
+  /** Scheduled payday whose salary hasn't arrived yet: the period stays open (ends today). */
+  awaitingSalarySince?: IsoDate;
 }
 
 /**
@@ -169,6 +223,10 @@ export function budgetPeriod(
 ): BudgetPeriod {
   if (settings.budgetPeriodMode === 'pay_period') {
     const prev = previousPayday(today, settings);
+    const waiting = awaitingSalary(today, settings);
+    if (prev && waiting) {
+      return { start: prev, end: today, mode: 'pay_period', awaitingSalarySince: waiting };
+    }
     const next = nextPayday(today, settings);
     if (prev && next) return { start: prev, end: addDays(next, -1), mode: 'pay_period' };
   }
@@ -189,9 +247,10 @@ export function withReceivedPaydays<S extends AppSettings>(
   settings: S,
   rules: readonly RecurringRule[],
   transactions: readonly Transaction[],
-): S & { receivedPaydays: IsoDate[] } {
+): S & { receivedPaydays: IsoDate[]; awaitSalary: boolean } {
   return {
     ...settings,
     receivedPaydays: salaryReceiptDates(today, settings, rules, transactions),
+    awaitSalary: settings.monthlySalaryCents > 0,
   };
 }

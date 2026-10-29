@@ -212,12 +212,25 @@ export function HomePage() {
       <PageHeader
         title="Home"
         subtitle={
-          <>
-            <DateText date={period.start} /> – <DateText date={period.end} /> · day {dayNumber} of{' '}
-            {totalDays}
-          </>
+          period.awaitingSalarySince ? (
+            <>
+              Since <DateText date={period.start} /> · day {dayNumber} · waiting for salary
+            </>
+          ) : (
+            <>
+              <DateText date={period.start} /> – <DateText date={period.end} /> · day {dayNumber} of{' '}
+              {totalDays}
+            </>
+          )
         }
       />
+      {period.awaitingSalarySince && (
+        <Alert tone="info">
+          Payday was due on <DateText date={period.awaitingSalarySince} />, but your salary isn’t in
+          yet, so this period continues until it arrives. Import your statement once it’s in and the
+          new period starts on that day.
+        </Alert>
+      )}
       {hasDemo && (
         <Alert tone="info">
           You’re looking at demo data. <Link to="/settings">Clear it in Settings</Link> when you’re
