@@ -1,5 +1,6 @@
 import { todayInAppZone } from '../dates';
 import {
+  awaitingSalary,
   budgetPeriod,
   nextPayday,
   previousBudgetPeriod,
@@ -190,5 +191,61 @@ describe('payday and periods', () => {
       '2026-02-25',
       '2026-03-23',
     ]);
+  });
+
+  describe('waiting for a salary that comes on a different day each month', () => {
+    // Payday set to the 29th; September's salary arrived on the 29th.
+    const base = {
+      paydayDayOfMonth: 29,
+      nextPaydayOverride: null,
+      budgetPeriodMode: 'pay_period' as const,
+      awaitSalary: true,
+      receivedPaydays: ['2026-09-29'],
+    };
+
+    it('keeps the current period open on the 29th until the salary arrives', () => {
+      expect(awaitingSalary('2026-10-29', base)).toBe('2026-10-29');
+      expect(budgetPeriod('2026-10-31', base)).toEqual({
+        start: '2026-09-29',
+        end: '2026-10-31',
+        mode: 'pay_period',
+        awaitingSalarySince: '2026-10-29',
+      });
+      expect(spendingWindow('2026-10-31', base)).toMatchObject({
+        basis: 'awaiting_salary',
+        daysRemaining: 1,
+      });
+    });
+
+    it('starts the new period on the day it arrives, even on the 2nd', () => {
+      const paid = { ...base, receivedPaydays: ['2026-09-29', '2026-11-02'] };
+      expect(awaitingSalary('2026-11-02', paid)).toBeNull();
+      const p = budgetPeriod('2026-11-02', paid);
+      expect(p).toEqual({ start: '2026-11-02', end: '2026-11-28', mode: 'pay_period' });
+      expect(previousBudgetPeriod(p, paid)).toEqual({
+        start: '2026-09-29',
+        end: '2026-11-01',
+        mode: 'pay_period',
+      });
+    });
+
+    it('starts the new period anyway after 5 days without salary', () => {
+      expect(awaitingSalary('2026-11-03', base)).toBe('2026-10-29');
+      expect(awaitingSalary('2026-11-04', base)).toBeNull();
+      expect(budgetPeriod('2026-11-04', base)).toEqual({
+        start: '2026-10-29',
+        end: '2026-11-28',
+        mode: 'pay_period',
+      });
+    });
+
+    it('does not wait when salary came early, or when salary can’t be recognised', () => {
+      const early = { ...base, receivedPaydays: ['2026-09-29', '2026-10-27'] };
+      expect(awaitingSalary('2026-10-28', early)).toBeNull();
+      expect(budgetPeriod('2026-10-28', early).start).toBe('2026-10-27');
+      const off = { ...base, awaitSalary: false };
+      expect(awaitingSalary('2026-10-29', off)).toBeNull();
+      expect(budgetPeriod('2026-10-29', off).start).toBe('2026-10-29');
+    });
   });
 });

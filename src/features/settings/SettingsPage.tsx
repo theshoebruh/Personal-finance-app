@@ -298,9 +298,10 @@ function PlanForm({ data, onSaved }: { data: FinanceData; onSaved: (m: string) =
         <p className="xs faint">
           A payday of 29–31 falls on the last day of shorter months. If salary arrives up to 10 days
           early or 5 days late, the new period starts on the day it arrives, provided it is
-          categorised as Salary or matched to your Salary recurring item. Use “Salary coming early”
-          only to plan ahead for a known early payday. Changing the period never deletes or changes
-          any transactions.
+          categorised as Salary or matched to your Salary recurring item. If it’s not in yet on
+          payday, the current period keeps going until it arrives (up to 5 days). Use “Salary coming
+          early” only to plan ahead for a known early payday. Changing the period never deletes or
+          changes any transactions.
         </p>
       </fieldset>
 
