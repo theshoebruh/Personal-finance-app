@@ -106,9 +106,11 @@ describe('pending card purchases', () => {
     const txns = await live();
     const game = txns.filter((t) => t.amountCents === -16_500);
     expect(game).toHaveLength(1);
+    // Dated by when it was bought (3 Mar); the bank posted it on 5 Mar.
     expect(game[0]).toMatchObject({
       status: 'posted',
-      date: '2026-03-05',
+      date: '2026-03-03',
+      postedDate: '2026-03-05',
       description: 'Game Store Mall Waterf (Card 1111)',
     });
     expect(txns.find((t) => t.amountCents === -14_900)?.status).toBe('pending');

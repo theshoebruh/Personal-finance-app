@@ -178,6 +178,10 @@ savings”) can be imported as transfers so they don't count as income or spendi
 transactions can be converted with _Convert to transfer_. Imported transactions are marked **Needs review**, keep
 their original row text, and can be removed together with **Undo import**.
 
+**Dates:** when a statement has both a posting date and a transaction date (Capitec does), each
+transaction is dated by when you spent; the bank's posting date is kept with it. A purchase made
+before payday but posted on payday therefore counts in the period it was made.
+
 **Pending card purchases** (marked “(Pending)”, or without a running balance when the other lines
 have one) import as **pending**: they count in your spending, group totals and balance straight away, and
 are labelled "Pending" until they clear. When a later statement has the posted version, it's recognised (by the bank's transaction

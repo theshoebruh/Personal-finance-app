@@ -18,6 +18,7 @@ import { SETTINGS_ID } from '@/domain/models';
 import { type IsoDate, todayInAppZone } from '@/domain/dates';
 import { ensureInitialised } from '@/services/settingsService';
 import { archiveSettledPendings } from '@/services/pendingCleanup';
+import { redateToSpendDates } from '@/services/spendDates';
 
 export interface FinanceData {
   settings: AppSettings;
@@ -109,8 +110,11 @@ export function useApp(): AppContextValue {
 export function useFinanceData(): FinanceData | undefined {
   const { db, store } = useApp();
   useEffect(() => {
-    // Set up defaults, then tidy pending purchases whose payment has since gone through.
-    void ensureInitialised(store).then(() => archiveSettledPendings(store));
+    // Set up defaults, date imported purchases by when you spent, then tidy pending purchases
+    // whose payment has since gone through.
+    void ensureInitialised(store)
+      .then(() => redateToSpendDates(store))
+      .then(() => archiveSettledPendings(store));
   }, [store]);
   return useLiveQuery(async () => {
     const [
