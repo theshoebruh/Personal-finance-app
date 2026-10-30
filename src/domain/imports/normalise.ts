@@ -175,6 +175,11 @@ export interface NormalisedRow {
   pending?: boolean;
   /** The bank's transaction date/time text (see `transactionDateColumn`), or null. */
   transactionAt?: string | null;
+  /**
+   * The day you actually spent (from `transactionAt`), when the main date is the posting date. A
+   * purchase on the 28th that the bank posts on the 30th belongs to the 28th.
+   */
+  transactionDate?: IsoDate | null;
   errors: string[];
 }
 
@@ -282,6 +287,7 @@ export function normaliseRows(
     }
     const tdColumn = mapping.transactionDateColumn ?? null;
     const transactionAt = tdColumn !== null ? (raw[tdColumn] ?? '').trim() || null : null;
+    const transactionDate = transactionAt && format ? parseDate(transactionAt, format) : null;
     const bankCategories = [mapping.categoryColumn, mapping.parentCategoryColumn]
       .map((c) => (c != null ? (raw[c] ?? '').trim() : ''))
       .filter(Boolean);
@@ -297,6 +303,7 @@ export function normaliseRows(
       feeCents,
       pending: markedPending,
       transactionAt,
+      transactionDate,
       errors,
     };
   });

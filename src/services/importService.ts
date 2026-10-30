@@ -1,5 +1,5 @@
 import type { Account, ImportBatch, Transaction } from '@/domain/models';
-import type { IsoDate } from '@/domain/dates';
+import { type IsoDate, diffDays } from '@/domain/dates';
 import type { Cents } from '@/domain/money';
 import {
   type ColumnMapping,
@@ -171,6 +171,20 @@ export interface CommitResult {
   needsReview: number;
 }
 
+/**
+ * A transaction is dated by when you spent (the bank's transaction date, when the statement has
+ * one), with the bank's posting date kept as `postedDate` when it differs. Duplicate detection
+ * still uses the posting date (in the fingerprint), so earlier imports are recognised.
+ */
+function spendDates(r: StagedRow): { date: IsoDate; postedDate: IsoDate | undefined } {
+  const spent = r.transactionDate;
+  // A transaction date after the posting date, or far before it, is not trusted.
+  if (!spent || spent > r.date! || diffDays(spent, r.date!) > 10) {
+    return { date: r.date!, postedDate: undefined };
+  }
+  return { date: spent, postedDate: spent === r.date ? undefined : r.date! };
+}
+
 /** Tags on a pending transaction that an import posted, so undoing that import can revert it. */
 function postedByTag(batchId: string): string {
   return `pp:${batchId}`.slice(0, 40);
@@ -218,7 +232,7 @@ export async function commitImport(
   const base: Transaction[] = selected.map((r) => ({
     id: newId(),
     accountId: account.id,
-    date: r.date!,
+    ...spendDates(r),
     description: r.description.slice(0, 200),
     originalDescription: r.raw.join(' | ').slice(0, 500),
     amountCents: r.amountCents!,
@@ -311,7 +325,7 @@ export async function commitImport(
     tags.push(postedTag, `${PREVIOUS_DATE_TAG}${t.date}`);
     postedUpdates.push({
       ...t,
-      date: r.date!,
+      ...spendDates(r),
       description: r.description.slice(0, 200),
       originalDescription: r.raw.join(' | ').slice(0, 500),
       categoryId,
