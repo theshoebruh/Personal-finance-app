@@ -14,6 +14,8 @@ import {
   renameCategory,
   renameGroup,
   setCategoryArchived,
+  setGoalMode,
+  setGroupAmounts,
   setGroupTargets,
 } from './categoriesService';
 import { ensureInitialised, updateSettings } from './settingsService';
@@ -177,5 +179,48 @@ describe('custom groups', () => {
 
   it('settings goals are only used to set up groups for older setups', async () => {
     expect((await store.settings.get(SETTINGS_ID))?.needsPercent).toBeNull();
+  });
+});
+
+describe('goals as Rand amounts', () => {
+  const mode = async () => (await store.settings.get(SETTINGS_ID))?.goalMode ?? 'percent';
+
+  it('first switch fills amounts from the % goals and salary; % goals are kept', async () => {
+    await updateSettings(store, { monthlySalaryCents: 1_234_500 });
+    await setGoalMode(store, 'amount');
+    expect(await mode()).toBe('amount');
+    const g = await groupsById();
+    // 50% of R12 345 = R6 172.50 → R6 173 (whole Rand).
+    expect(g.get(GROUP_IDS.needs)).toMatchObject({ targetPercent: 50, targetCents: 617_300 });
+    expect(g.get(GROUP_IDS.wants)?.targetCents).toBe(370_400);
+
+    await setGroupAmounts(store, Object.fromEntries([...g.keys()].map((id) => [id, 100_000])));
+    await setGoalMode(store, 'percent');
+    await setGoalMode(store, 'amount'); // amounts already set: not overwritten
+    expect((await groupsById()).get(GROUP_IDS.needs)).toMatchObject({
+      targetPercent: 50,
+      targetCents: 100_000,
+    });
+  });
+
+  it('without a salary, amounts start empty', async () => {
+    await updateSettings(store, { monthlySalaryCents: 0 });
+    await setGoalMode(store, 'amount');
+    expect([...(await groupsById()).values()].every((g) => g.targetCents == null)).toBe(true);
+  });
+
+  it('rejects a missing, negative or fractional-cent amount', async () => {
+    const ids = [...(await groupsById()).keys()];
+    const all = (v: number) => Object.fromEntries(ids.map((id) => [id, v]));
+    await expect(setGroupAmounts(store, { ...all(100), [GROUP_IDS.needs]: -1 })).rejects.toThrow(
+      /Needs/,
+    );
+    await expect(setGroupAmounts(store, { ...all(100), [GROUP_IDS.needs]: 1.5 })).rejects.toThrow(
+      /Needs/,
+    );
+    const { [GROUP_IDS.wants]: _w, ...missing } = all(100);
+    await expect(setGroupAmounts(store, missing)).rejects.toThrow(/Wants/);
+    await setGroupAmounts(store, all(0));
+    expect((await groupsById()).get(GROUP_IDS.needs)?.targetCents).toBe(0);
   });
 });

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useApp, useFinanceData } from '@/app/AppContext';
-import { type BudgetGroup, type Category, MAX_BUDGET_GROUPS } from '@/domain/models';
+import { type BudgetGroup, type Category, type GoalMode, MAX_BUDGET_GROUPS } from '@/domain/models';
+import { type Cents, centsToDecimalString, parseAmountToCents } from '@/domain/money';
 import { GROUP_IDS } from '@/domain/defaults';
 import { groupIdForCategory } from '@/domain/calculations/buckets';
 import {
@@ -13,9 +14,12 @@ import {
   renameCategory,
   renameGroup,
   setCategoryArchived,
+  MAX_GOAL_CENTS,
+  setGoalMode,
+  setGroupAmounts,
   setGroupTargets,
 } from '@/services/categoriesService';
-import { Alert, Card, Loading, useStatus } from '@/components/ui';
+import { Alert, Card, Loading, Money, useStatus } from '@/components/ui';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { groupColour, groupHint } from '../home/useBuckets';
@@ -71,6 +75,108 @@ function GoalsForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/** Goals as fixed Rand amounts per period; compared with the monthly salary when one is set. */
+function AmountGoalsForm({
+  groups,
+  salaryCents,
+  onSave,
+}: {
+  groups: BudgetGroup[];
+  salaryCents: Cents;
+  onSave: (a: Record<string, Cents>) => void;
+}) {
+  const [values, setValues] = useState(() =>
+    Object.fromEntries(
+      groups.map((g) => [g.id, g.targetCents == null ? '' : centsToDecimalString(g.targetCents)]),
+    ),
+  );
+  const parsed = Object.fromEntries(
+    groups.map((g) => {
+      const text = (values[g.id] ?? '').trim();
+      return [g.id, text === '' ? 0 : parseAmountToCents(text)];
+    }),
+  );
+  const invalid = groups.filter((g) => {
+    const v = parsed[g.id];
+    return v == null || v < 0 || v > MAX_GOAL_CENTS;
+  });
+  const total = groups.reduce((s, g) => s + (parsed[g.id] ?? 0), 0);
+  const diff = salaryCents - total;
+  return (
+    <form
+      onSubmit={(e: FormEvent) => {
+        e.preventDefault();
+        onSave(parsed as Record<string, Cents>);
+      }}
+    >
+      <div className="goal-inputs">
+        {groups.map((g) => (
+          <label key={g.id} className="goal-input">
+            <span>
+              <span className={`swatch chart-${groupColour(g)}`} aria-hidden="true" /> {g.name}
+            </span>
+            <span className="input-suffix">
+              R
+              <input
+                inputMode="decimal"
+                value={values[g.id] ?? ''}
+                placeholder="0"
+                aria-label={`${g.name} goal (Rand)`}
+                aria-invalid={invalid.includes(g) || undefined}
+                onChange={(e) => setValues((v) => ({ ...v, [g.id]: e.target.value }))}
+              />
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="row-between">
+        <span className="small" aria-live="polite">
+          {invalid.length > 0 ? (
+            <span className="negative">Check the amount for {invalid[0]!.name}</span>
+          ) : (
+            <>
+              Total <Money cents={total} />
+              {salaryCents > 0 &&
+                (diff === 0 ? (
+                  <span className="positive"> · matches your salary</span>
+                ) : diff > 0 ? (
+                  <span className="muted">
+                    {' '}
+                    · <Money cents={diff} /> of your salary not planned
+                  </span>
+                ) : (
+                  <span className="negative">
+                    {' '}
+                    · <Money cents={-diff} /> more than your salary
+                  </span>
+                ))}
+            </>
+          )}
+        </span>
+        <button type="submit" className="btn btn-primary" disabled={invalid.length > 0}>
+          Save goals
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function GoalModeSwitch({ value, onChange }: { value: GoalMode; onChange: (m: GoalMode) => void }) {
+  const options: [GoalMode, string][] = [
+    ['percent', '% of income'],
+    ['amount', 'Rand amounts'],
+  ];
+  return (
+    <div className="segmented" role="group" aria-label="Set goals as">
+      {options.map(([m, label]) => (
+        <button key={m} type="button" aria-pressed={value === m} onClick={() => onChange(m)}>
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -226,6 +332,7 @@ function GroupCard({
   const { store } = useApp();
   const confirm = useConfirm();
   const [renaming, setRenaming] = useState(false);
+  const percentMode = (useFinanceData()?.settings.goalMode ?? 'percent') === 'percent';
   const hint = groupHint(group);
   const canDelete = !BUILT_IN.has(group.id);
   return (
@@ -251,7 +358,7 @@ function GroupCard({
                   const ok = await confirm({
                     title: `Delete the ${group.name} group?`,
                     message:
-                      group.targetPercent > 0
+                      percentMode && group.targetPercent > 0
                         ? `Its ${group.targetPercent}% goal moves to what’s left over. Categories must be moved or hidden first.`
                         : 'Categories must be moved or hidden first.',
                     confirmLabel: 'Delete group',
@@ -298,8 +405,7 @@ function AddGroupForm({ run, full }: { run: Run; full: boolean }) {
   return (
     <Card title="Add a group">
       <p className="small muted">
-        For example “Business”, “Car” or “Kids”. New groups start at 0%: give them a share in the
-        goals above.
+        For example “Business”, “Car” or “Kids”. New groups start with no goal: give them one above.
       </p>
       {full ? (
         <p className="small">You have the maximum of {MAX_BUDGET_GROUPS} groups.</p>
@@ -358,20 +464,48 @@ export function CategoriesPage() {
   );
   const hidden = visible.filter((c) => c.archived).sort(byName);
   const suggestions = missingSuggestions(data.categories);
+  const goalMode: GoalMode = data.settings.goalMode ?? 'percent';
+  const periodWord = data.settings.budgetPeriodMode === 'pay_period' ? 'pay period' : 'month';
 
   return (
     <>
       <PageHeader title="Categories" subtitle="Your groups and what goes in each" />
 
       <Card title="Group goals">
-        <p className="small muted">
-          How much of your income each group should get. The last one is what you keep unspent.
-        </p>
-        <GoalsForm
-          key={groups.map((g) => `${g.id}:${g.targetPercent}`).join('|')}
-          groups={groups}
-          onSave={(t) => void run(() => setGroupTargets(store, t), 'Goals saved')}
+        <GoalModeSwitch
+          value={goalMode}
+          onChange={(m) =>
+            void run(
+              () => setGoalMode(store, m),
+              m === 'amount' ? 'Goals are now Rand amounts' : 'Goals are now % of income',
+            )
+          }
         />
+        {goalMode === 'amount' ? (
+          <>
+            <p className="small muted">
+              How much each group should get per {periodWord}. The last one is what you aim to keep
+              unspent.
+            </p>
+            <AmountGoalsForm
+              key={groups.map((g) => `${g.id}:${g.targetCents ?? ''}`).join('|')}
+              groups={groups}
+              salaryCents={data.settings.monthlySalaryCents}
+              onSave={(a) => void run(() => setGroupAmounts(store, a), 'Goals saved')}
+            />
+          </>
+        ) : (
+          <>
+            <p className="small muted">
+              How much of your income each group should get. The last one is what you keep unspent.
+            </p>
+            <GoalsForm
+              key={groups.map((g) => `${g.id}:${g.targetPercent}`).join('|')}
+              groups={groups}
+              onSave={(t) => void run(() => setGroupTargets(store, t), 'Goals saved')}
+            />
+          </>
+        )}
       </Card>
 
       {suggestions.length > 0 && (

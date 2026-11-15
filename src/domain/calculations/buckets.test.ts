@@ -158,3 +158,65 @@ describe('groups summary', () => {
     expect(groupIdForCategory(cat('d', 'business_expense'), ids)).toBeNull();
   });
 });
+
+describe('goals as Rand amounts', () => {
+  const withAmounts = groups.map((g) => ({
+    ...g,
+    targetCents:
+      (
+        {
+          [GROUP_IDS.needs]: 400_000,
+          [GROUP_IDS.wants]: 200_000,
+          [GROUP_IDS.buffer]: 50_000,
+        } as Record<string, number>
+      )[g.id] ?? null,
+  }));
+  const amountSummary = (transactions: ReturnType<typeof makeTxn>[]) =>
+    groupSummary({
+      groups: withAmounts,
+      categories,
+      accounts: [main, sevenDay],
+      transactions,
+      start: '2026-03-01',
+      end: '2026-03-31',
+      goalMode: 'amount',
+    });
+
+  it('uses each group’s amount as its goal, whatever the income', () => {
+    const s = amountSummary([
+      income(900_000, 'salary'),
+      spend(450_000, 'electricity'),
+      spend(50_000, 'snacks'),
+    ]);
+    expect(s.goalMode).toBe('amount');
+    expect(line(s, GROUP_IDS.needs)).toMatchObject({ targetCents: 400_000, leftCents: -50_000 });
+    expect(line(s, GROUP_IDS.wants)).toMatchObject({ targetCents: 200_000, leftCents: 150_000 });
+    // No amount set = R0 goal.
+    expect(line(s, GROUP_IDS.savings).targetCents).toBe(0);
+    // Buffer: R4 000 left over against a R500 goal.
+    expect(line(s, GROUP_IDS.buffer)).toMatchObject({
+      actualCents: 400_000,
+      targetCents: 50_000,
+      leftCents: 350_000,
+    });
+    expect(s.targetTotalCents).toBe(650_000);
+  });
+
+  it('has goals before any income arrives', () => {
+    const s = amountSummary([spend(100_000, 'electricity')]);
+    expect(line(s, GROUP_IDS.needs)).toMatchObject({ targetCents: 400_000, leftCents: 300_000 });
+  });
+
+  it('percent mode (the default) ignores amounts', () => {
+    const s = groupSummary({
+      groups: withAmounts,
+      categories,
+      accounts: [main],
+      transactions: [income(1_000_000, 'salary')],
+      start: '2026-03-01',
+      end: '2026-03-31',
+    });
+    expect(s.goalMode).toBe('percent');
+    expect(line(s, GROUP_IDS.needs).targetCents).toBe(500_000);
+  });
+});

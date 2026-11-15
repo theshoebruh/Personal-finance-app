@@ -1,12 +1,15 @@
 import {
   type BudgetGroup,
   type Category,
+  type GoalMode,
   MAX_BUDGET_GROUPS,
   budgetGroupSchema,
   categorySchema,
 } from '@/domain/models';
 import { GROUP_IDS, SUGGESTED_CATEGORY_IDS, seedCategories } from '@/domain/defaults';
+import { type Cents, percentOf } from '@/domain/money';
 import type { FinanceStore } from '@/data/repositories/types';
+import { getSettings, updateSettings } from './settingsService';
 import { type Clock, DomainError, newId, systemClock } from './common';
 
 function sameName(a: string, b: string): boolean {
@@ -276,3 +279,58 @@ export async function setGroupTargets(
       .map((g) => ({ ...g, targetPercent: targets[g.id]!, updatedAt: now })),
   );
 }
+
+/** Largest goal amount accepted (R10 million), to catch typos. */
+export const MAX_GOAL_CENTS = 1_000_000_000;
+
+/** Save every group's goal as a fixed amount per period (amount mode). */
+export async function setGroupAmounts(
+  store: FinanceStore,
+  amounts: Record<string, Cents>,
+  clock: Clock = systemClock,
+): Promise<void> {
+  const groups = await store.budgetGroups.list();
+  for (const g of groups) {
+    const v = amounts[g.id];
+    if (v === undefined || !Number.isInteger(v) || v < 0 || v > MAX_GOAL_CENTS) {
+      throw new DomainError(`Enter an amount for ${g.name} (R0 or more).`);
+    }
+  }
+  const now = clock.now();
+  await store.budgetGroups.bulkPut(
+    groups
+      .filter((g) => g.targetCents !== amounts[g.id])
+      .map((g) => ({ ...g, targetCents: amounts[g.id]!, updatedAt: now })),
+  );
+}
+
+/**
+ * Switch between % of income and fixed amounts. The first switch to amounts fills them in from
+ * the % goals and the monthly salary (when one is set), so nothing starts at R0 by surprise.
+ * The % goals are kept, so switching back restores them.
+ */
+export async function setGoalMode(
+  store: FinanceStore,
+  mode: GoalMode,
+  clock: Clock = systemClock,
+): Promise<void> {
+  const settings = await getSettings(store);
+  if (mode === 'amount') {
+    const groups = await store.budgetGroups.list();
+    const salary = settings.monthlySalaryCents;
+    if (salary > 0 && groups.every((g) => g.targetCents == null)) {
+      const now = clock.now();
+      await store.budgetGroups.bulkPut(
+        groups.map((g) => ({
+          ...g,
+          targetCents: roundToRand(percentOf(salary, g.targetPercent)),
+          updatedAt: now,
+        })),
+      );
+    }
+  }
+  if ((settings.goalMode ?? 'percent') !== mode)
+    await updateSettings(store, { goalMode: mode }, clock);
+}
+
+const roundToRand = (cents: Cents) => Math.round(cents / 100) * 100;

@@ -43,6 +43,7 @@ export function useBuckets() {
       transactions: data.transactions,
       start: period.start,
       end: period.end,
+      goalMode: data.settings.goalMode,
     });
     return {
       data,

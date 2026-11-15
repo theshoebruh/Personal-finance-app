@@ -1,4 +1,4 @@
-import type { Account, BudgetGroup, Category, Transaction } from '../models';
+import type { Account, BudgetGroup, Category, GoalMode, Transaction } from '../models';
 import { GROUP_IDS, defaultGroupIdFor } from '../defaults';
 import type { IsoDate } from '../dates';
 import { type Cents, percentOf } from '../money';
@@ -35,7 +35,7 @@ export interface GroupLine {
   /** Money in this group this period (net of money coming back). Leftover: income − spending. */
   actualCents: Cents;
   targetPercent: number;
-  /** targetPercent of income. */
+  /** The goal in Rand: targetPercent of income, or the group's fixed amount in amount mode. */
   targetCents: Cents;
   /** Actual as % of income; null when there is no income yet. */
   actualPercent: number | null;
@@ -62,8 +62,12 @@ export interface GroupSummary {
   savingsTransfersCents: Cents;
   /** Money taken back out of savings (transfers, or income marked "Transfer from savings"). */
   savingsWithdrawalsCents: Cents;
-  /** Sum of all goals; should be 100. */
+  /** How the goals are set (percent of income, or fixed amounts). */
+  goalMode: GoalMode;
+  /** Sum of all % goals; should be 100 in percent mode. */
   targetTotalPercent: number;
+  /** Sum of all goals in Rand. */
+  targetTotalCents: Cents;
   /** Spending still pending at the bank (included in the figures above), positive. */
   pendingOutCents: Cents;
 }
@@ -75,7 +79,7 @@ export interface GroupSummary {
  * - Spending groups: net spending in their categories (refunds reduce it). The Savings group also
  *   counts transfers from a spendable account into a savings account, minus transfers back.
  * - Leftover (Buffer): income − all spending, including uncategorised.
- * Goals are % of this period's income; "left" is goal − actual.
+ * Goals are % of this period's income, or fixed amounts in amount mode; "left" is goal − actual.
  */
 export function groupSummary(input: {
   groups: readonly BudgetGroup[];
@@ -84,7 +88,9 @@ export function groupSummary(input: {
   transactions: readonly Transaction[];
   start: IsoDate;
   end: IsoDate;
+  goalMode?: GoalMode | null | undefined;
 }): GroupSummary {
+  const goalMode: GoalMode = input.goalMode ?? 'percent';
   const { categories, transactions, start, end } = input;
   const groups = [...input.groups].sort((a, b) => a.sortOrder - b.sortOrder);
   const spendingGroups = groups.filter((g) => g.kind === 'spending');
@@ -148,7 +154,8 @@ export function groupSummary(input: {
   if (!savingsGroup) uncategorised += savingsIn - savingsOut;
 
   const pct = (cents: Cents) => (income > 0 ? Math.round((cents * 10_000) / income) / 100 : null);
-  const target = (g: BudgetGroup) => percentOf(Math.max(0, income), g.targetPercent);
+  const target = (g: BudgetGroup) =>
+    goalMode === 'amount' ? (g.targetCents ?? 0) : percentOf(Math.max(0, income), g.targetPercent);
 
   const spendingLines: GroupLine[] = spendingGroups.map((g) => {
     const cats = [...perGroup.get(g.id)!]
@@ -200,7 +207,9 @@ export function groupSummary(input: {
     uncategorisedCents: uncategorised,
     savingsTransfersCents: savingsIn,
     savingsWithdrawalsCents: savingsOut + withdrawalsByCategory,
+    goalMode,
     targetTotalPercent: groups.reduce((s, g) => s + g.targetPercent, 0),
+    targetTotalCents: groups.reduce((s, g) => s + target(g), 0),
     pendingOutCents: transactions
       .filter(
         (t) =>

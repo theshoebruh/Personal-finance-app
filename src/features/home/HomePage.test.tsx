@@ -66,6 +66,21 @@ it('shows income, spending, what is left and the groups', async () => {
   expect(screen.getByRole('link', { name: /Buffer/ })).toBeInTheDocument();
 });
 
+it('shows Rand goals when goals are set as amounts', async () => {
+  await updateSettings(store, { goalMode: 'amount' });
+  const groups = await store.budgetGroups.list();
+  await store.budgetGroups.bulkPut(
+    groups.map((g) => ({ ...g, targetCents: g.id === GROUP_IDS.wants ? 500_000 : 0 })),
+  );
+  render(<App db={db} store={store} initialPath="/" />);
+  const wants = await screen.findByRole('link', { name: /Wants/ });
+  // R4,000 of a R5,000 goal: 80% of the goal used, R1,000 left.
+  expect(within(wants).getByText(/goal R/)).toHaveTextContent(/R\s5\s000/);
+  expect(within(wants).getByText('80%')).toBeInTheDocument();
+  expect(within(wants).getByText(/left/)).toHaveTextContent('1 000,00');
+  expect(screen.queryByText(/add up to/)).not.toBeInTheDocument();
+});
+
 it('opens a group and moves a transaction to another category', async () => {
   const user = userEvent.setup({ delay: null });
   render(<App db={db} store={store} initialPath="/group/grp-wants" />);
