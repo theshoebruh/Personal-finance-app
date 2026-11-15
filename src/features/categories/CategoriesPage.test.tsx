@@ -58,3 +58,38 @@ it('adds a custom group with a goal and categories, then deletes it once empty',
   // Its 5% went to Buffer, so goals still add up to 100%.
   expect(screen.getByLabelText('Buffer goal (% of income)')).toHaveValue('10');
 });
+
+it('switches goals to Rand amounts and shows them on Home', async () => {
+  const user = userEvent.setup({ delay: null });
+  render(<App db={db} store={store} initialPath="/categories" />);
+  await user.click(await screen.findByRole('button', { name: 'Rand amounts' }));
+  expect(await screen.findByText('Goals are now Rand amounts')).toBeInTheDocument();
+
+  // Filled in from the % goals and the R12 000 default salary.
+  const needs = await screen.findByLabelText('Needs goal (Rand)');
+  expect(needs).toHaveValue('6000.00');
+  expect(screen.getByText(/matches your salary/)).toBeInTheDocument();
+  await user.clear(needs);
+  await user.type(needs, '4000');
+  const wants = screen.getByLabelText('Wants goal (Rand)');
+  await user.clear(wants);
+  await user.type(wants, '2 000');
+  await user.clear(screen.getByLabelText('Savings goal (Rand)'));
+  expect(screen.getByText(/of your salary not planned/)).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Save goals' }));
+  expect(await screen.findByText('Goals saved')).toBeInTheDocument();
+  const g = new Map((await store.budgetGroups.list()).map((x) => [x.name, x.targetCents]));
+  expect(g.get('Needs')).toBe(400_000);
+  expect(g.get('Wants')).toBe(200_000);
+  expect(g.get('Savings')).toBe(0);
+
+  // A typo can't be saved.
+  await user.clear(screen.getByLabelText('Savings goal (Rand)'));
+  await user.type(screen.getByLabelText('Savings goal (Rand)'), 'abc');
+  expect(screen.getByText('Check the amount for Savings')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Save goals' })).toBeDisabled();
+
+  // Back to %: the percentages are as they were.
+  await user.click(screen.getByRole('button', { name: '% of income' }));
+  expect(await screen.findByLabelText('Needs goal (% of income)')).toHaveValue('50');
+});

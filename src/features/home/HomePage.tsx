@@ -1,7 +1,8 @@
 import { Link, useNavigate } from 'react-router';
 import { useApp } from '@/app/AppContext';
 import { type GroupLine, isGoalToReach } from '@/domain/calculations/buckets';
-import { formatZAR } from '@/domain/money';
+import type { GoalMode } from '@/domain/models';
+import { formatZAR, formatZARWhole } from '@/domain/money';
 import { currentBalance } from '@/domain/calculations/balances';
 import { loadDemoData } from '@/services/demoService';
 import { Alert, Card, CountUpMoney, DateText, Loading, Money, useStatus } from '@/components/ui';
@@ -22,6 +23,17 @@ export function ringTone(line: GroupLine): RingTone {
 
 export function percentText(p: number | null): string {
   return p === null ? '–' : `${p.toLocaleString('en-ZA', { maximumFractionDigits: 1 })}%`;
+}
+
+/** The goal in words: "50%" of income, or "R4 000" in amount mode. */
+export function goalText(line: GroupLine, mode: GoalMode): string {
+  return mode === 'amount' ? formatZARWhole(line.targetCents) : `${line.targetPercent}%`;
+}
+
+/** The ring's centre: % of income, or (amount mode) how much of the goal is used. */
+export function ringPercent(line: GroupLine, mode: GoalMode): number | null {
+  if (mode === 'percent') return line.actualPercent;
+  return line.targetCents > 0 ? Math.round((line.actualCents * 100) / line.targetCents) : null;
 }
 
 /** Over budget: a spending group past its goal, or less than nothing left over. */
@@ -72,7 +84,7 @@ export function LeftText({ line }: { line: GroupLine }) {
   );
 }
 
-function GroupCard({ line }: { line: GroupLine }) {
+function GroupCard({ line, mode }: { line: GroupLine; mode: GoalMode }) {
   const name = line.group.name;
   const hint = groupHint(line.group);
   const over = isOver(line);
@@ -91,16 +103,20 @@ function GroupCard({ line }: { line: GroupLine }) {
     >
       <Ring
         value={fraction(Math.max(0, line.actualCents), Math.max(1, line.targetCents))}
-        label={`${name}: ${formatZAR(line.actualCents)} of ${formatZAR(line.targetCents)} target, ${percentText(line.actualPercent)} of income (goal ${line.targetPercent}%)`}
+        label={
+          mode === 'amount'
+            ? `${name}: ${formatZAR(line.actualCents)} of ${formatZAR(line.targetCents)} goal, ${percentText(ringPercent(line, mode))} of goal`
+            : `${name}: ${formatZAR(line.actualCents)} of ${formatZAR(line.targetCents)} target, ${percentText(line.actualPercent)} of income (goal ${line.targetPercent}%)`
+        }
         size={76}
         thickness={8}
         tone={ringTone(line)}
       >
-        <span className="group-card-pct">{percentText(line.actualPercent)}</span>
+        <span className="group-card-pct">{percentText(ringPercent(line, mode))}</span>
       </Ring>
       <span className="group-card-body">
         <span className="group-card-title">
-          {name} <span className="faint">· goal {line.targetPercent}%</span>
+          {name} <span className="faint">· goal {goalText(line, mode)}</span>
         </span>
         {hint && <span className="group-card-hint">{hint}</span>}
         <span className="group-card-amounts">
@@ -310,7 +326,13 @@ export function HomePage() {
           in any group.
         </Alert>
       )}
-      {summary.targetTotalPercent !== 100 && (
+      {summary.goalMode === 'amount' && summary.targetTotalCents === 0 && (
+        <Alert tone="info">
+          Your goals are set as Rand amounts but none has an amount yet.{' '}
+          <Link to="/categories">Set them</Link>.
+        </Alert>
+      )}
+      {summary.goalMode === 'percent' && summary.targetTotalPercent !== 100 && (
         <Alert tone="info">
           Your group goals add up to {summary.targetTotalPercent}%, not 100%.{' '}
           <Link to="/categories">Adjust them</Link>.
@@ -320,9 +342,9 @@ export function HomePage() {
       <h2 className="section-title">Groups</h2>
       <div className="group-grid">
         {spendLines.map((l) => (
-          <GroupCard key={l.group.id} line={l} />
+          <GroupCard key={l.group.id} line={l} mode={summary.goalMode} />
         ))}
-        {leftover && <GroupCard line={leftover} />}
+        {leftover && <GroupCard line={leftover} mode={summary.goalMode} />}
       </div>
 
       {summary.incomeByCategory.length > 0 && (

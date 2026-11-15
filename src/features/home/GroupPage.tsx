@@ -21,7 +21,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Donut, Ring, fraction, shadeOf } from '@/components/charts';
 import { CategoryOptions, lookup } from '../shared';
 import { groupColour, groupHint, useBuckets } from './useBuckets';
-import { LeftText, percentText, ringTone } from './HomePage';
+import { LeftText, goalText, percentText, ringPercent, ringTone } from './HomePage';
 import {
   TRANSACTION_SORTS,
   type TransactionSort,
@@ -136,8 +136,10 @@ export function GroupPage() {
           thickness={14}
           tone={ringTone(line)}
         >
-          <span className="ring-big">{percentText(line.actualPercent)}</span>
-          <span className="ring-small">of income</span>
+          <span className="ring-big">{percentText(ringPercent(line, summary.goalMode))}</span>
+          <span className="ring-small">
+            {summary.goalMode === 'amount' ? 'of goal' : 'of income'}
+          </span>
         </Ring>
         <dl className="group-facts">
           <div>
@@ -147,7 +149,9 @@ export function GroupPage() {
             </dd>
           </div>
           <div>
-            <dt>Goal ({line.targetPercent}% of income)</dt>
+            <dt>
+              {summary.goalMode === 'amount' ? 'Goal' : `Goal (${line.targetPercent}% of income)`}
+            </dt>
             <dd>
               <Money cents={line.targetCents} />
             </dd>
@@ -166,7 +170,11 @@ export function GroupPage() {
           <p className="small">
             {name} is what’s left after all spending: income <Money cents={summary.incomeCents} /> −
             spent <Money cents={summary.expenseCents} /> = <Money cents={summary.leftCents} />. Your
-            goal is to keep {line.targetPercent}% of income unspent.
+            goal is to keep{' '}
+            {summary.goalMode === 'amount'
+              ? goalText(line, 'amount')
+              : `${line.targetPercent}% of income`}{' '}
+            unspent.
           </p>
         </Card>
       ) : (

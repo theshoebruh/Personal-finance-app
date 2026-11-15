@@ -23,6 +23,7 @@ export function defaultSettings(now: string): AppSettings {
     wantsPercent: null,
     sideBusinessPercent: null,
     bufferPercent: null,
+    goalMode: null,
     paydayDayOfMonth: null,
     nextPaydayOverride: null,
     budgetPeriodMode: 'pay_period',

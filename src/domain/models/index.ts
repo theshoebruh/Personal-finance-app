@@ -104,6 +104,9 @@ export type Category = z.infer<typeof categorySchema>;
 /** At most this many groups (the charts need clearly different colours). */
 export const MAX_BUDGET_GROUPS = 8;
 
+export const GOAL_MODES = ['percent', 'amount'] as const;
+export type GoalMode = (typeof GOAL_MODES)[number];
+
 export const budgetGroupSchema = z.object({
   id,
   name: z.string().trim().min(1, 'Enter a name').max(40),
@@ -111,8 +114,10 @@ export const budgetGroupSchema = z.object({
   kind: z.enum(['spending', 'leftover']),
   /** Chart colour slot (see --chart-N); 0 is the neutral "other" colour. */
   colour: z.number().int().min(0).max(6),
-  /** Goal as % of income. All groups together should add up to 100. */
+  /** Goal as % of income (used when settings.goalMode is "percent", the default). */
   targetPercent: z.number().min(0).max(100),
+  /** Goal as a fixed amount per period (used when settings.goalMode is "amount"); absent = R0. */
+  targetCents: nonNegativeCents.nullable().optional(),
   sortOrder: z.number().int().min(0).max(1000),
   ...recordMeta,
 });
@@ -423,6 +428,8 @@ export const appSettingsSchema = z.object({
   wantsPercent: z.number().min(0).max(100).nullable().optional(),
   sideBusinessPercent: z.number().min(0).max(100).nullable().optional(),
   bufferPercent: z.number().min(0).max(100).nullable().optional(),
+  /** How group goals are set: % of income, or fixed Rand amounts. Null/absent = percent. */
+  goalMode: z.enum(GOAL_MODES).nullable().optional(),
   /** Expected payday day-of-month (1–31, clamped to month length). Null = no payday set. */
   paydayDayOfMonth: z.number().int().min(1).max(31).nullable(),
   /** One-off override for the next payday (e.g. salary paid early before a weekend). */

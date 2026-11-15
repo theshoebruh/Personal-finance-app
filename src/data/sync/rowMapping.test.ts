@@ -35,6 +35,7 @@ const SAMPLES: Record<SyncedTable, object> = {
     kind: 'spending',
     colour: 2,
     targetPercent: 22.5,
+    targetCents: 200_000,
     sortOrder: 1,
     ...meta,
   },
