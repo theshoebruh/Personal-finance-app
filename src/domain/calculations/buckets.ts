@@ -5,6 +5,7 @@ import { type Cents, percentOf } from '../money';
 import { savingsMadeInPeriod } from './goals';
 import { spendingByCategory } from './reporting';
 import { isActual, isPending } from './balances';
+import { asBudgeted } from './budgetDate';
 
 /**
  * The group a category counts towards: the one it was put in, or (for data from before custom
@@ -91,7 +92,9 @@ export function groupSummary(input: {
   goalMode?: GoalMode | null | undefined;
 }): GroupSummary {
   const goalMode: GoalMode = input.goalMode ?? 'percent';
-  const { categories, transactions, start, end } = input;
+  const { categories, start, end } = input;
+  // Transactions moved to an earlier period (see budgetDate.ts) count on that date.
+  const transactions = input.transactions.map(asBudgeted);
   const groups = [...input.groups].sort((a, b) => a.sortOrder - b.sortOrder);
   const spendingGroups = groups.filter((g) => g.kind === 'spending');
   const spendingIds = new Set(spendingGroups.map((g) => g.id));

@@ -5,7 +5,9 @@ import { GROUP_IDS } from '@/domain/defaults';
 import { groupIdForCategory } from '@/domain/calculations/buckets';
 import { formatZAR } from '@/domain/money';
 import { isActual, isPending } from '@/domain/calculations/balances';
-import { updateTransaction } from '@/services/transactionsService';
+import { setBudgetDate, updateTransaction } from '@/services/transactionsService';
+import { budgetDateOf, countsInEarlierPeriod } from '@/domain/calculations/budgetDate';
+import { addDays, diffDays } from '@/domain/dates';
 import {
   Badge,
   Card,
@@ -86,15 +88,31 @@ export function GroupPage() {
     const cat = categoryId ? categoriesById.get(categoryId) : undefined;
     return !!cat && groupIdForCategory(cat, spendingIds) === g.id;
   };
+  type Txn = (typeof data.transactions)[number];
+  const listable = (t: Txn) =>
+    (isActual(t) || isPending(t)) &&
+    (t.type === 'expense' || t.type === 'refund' || t.type === 'income') &&
+    inThisGroup(t.categoryId);
   const txns = isLeftover
+    ? []
+    : data.transactions.filter((t) => {
+        const d = budgetDateOf(t);
+        return listable(t) && d >= period.start && d <= period.end;
+      });
+  // Savings made early this period out of last period's leftover can be counted there instead.
+  const isSavings = bucket === GROUP_IDS.savings;
+  const lastPeriodDay = addDays(period.start, -1);
+  const canMoveBack = (t: Txn) =>
+    isSavings && t.amountCents < 0 && t.date >= period.start && diffDays(period.start, t.date) <= 7;
+  const movedBack = isLeftover
     ? []
     : data.transactions.filter(
         (t) =>
-          (isActual(t) || isPending(t)) &&
-          (t.type === 'expense' || t.type === 'refund' || t.type === 'income') &&
+          listable(t) &&
+          countsInEarlierPeriod(t) &&
           t.date >= period.start &&
           t.date <= period.end &&
-          inThisGroup(t.categoryId),
+          budgetDateOf(t) < period.start,
       );
   const catName = (id: string | null) => (id ? (categoriesById.get(id)?.name ?? '') : '');
   const groupCategories = [...new Set(txns.map((t) => t.categoryId))]
@@ -303,11 +321,58 @@ export function GroupPage() {
                           kind={t.type === 'income' ? 'income' : 'expense'}
                         />
                       </select>
+                      {canMoveBack(t) && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          aria-label={`${t.description}: from last period’s leftover`}
+                          onClick={() =>
+                            void run(
+                              () => setBudgetDate(store, t.id, lastPeriodDay),
+                              `${formatZAR(-t.amountCents)} now counts in last period`,
+                            )
+                          }
+                        >
+                          From last period’s leftover
+                        </button>
+                      )}
                     </div>
                     <Money cents={-t.amountCents} />
                   </li>
                 ))}
               </ul>
+            )}
+            {movedBack.length > 0 && (
+              <div className="moved-back">
+                <p className="xs faint">
+                  Counted in last period (made from its leftover), so not in this period’s totals:
+                </p>
+                <ul className="list">
+                  {movedBack.map((t) => (
+                    <li key={t.id}>
+                      <div className="primary">
+                        <div className="title">{t.description}</div>
+                        <div className="meta">
+                          <DateText date={t.date} /> · <Money cents={-t.amountCents} />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        aria-label={`Count ${t.description} in this period`}
+                        onClick={() =>
+                          void run(
+                            () => setBudgetDate(store, t.id, null),
+                            `${formatZAR(-t.amountCents)} counts in this period again`,
+                          )
+                        }
+                      >
+                        Count here
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </Card>
         </>

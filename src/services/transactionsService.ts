@@ -7,6 +7,8 @@ import type {
 } from '@/domain/models';
 import type { FinanceStore } from '@/data/repositories/types';
 import { suggestTransfers } from '@/domain/imports/transfers';
+import { withBudgetDate } from '@/domain/calculations/budgetDate';
+import type { IsoDate } from '@/domain/dates';
 import { type Clock, DomainError, newId, systemClock } from './common';
 
 /** Non-transfer transaction types the user can create directly. */
@@ -502,4 +504,27 @@ export async function convertToTransfer(
   }
   await store.atomic(() => store.transactions.bulkPut(writes));
   return outcome;
+}
+
+/**
+ * Count a transaction in an earlier period (e.g. last period's leftover moved to savings on
+ * payday): `countOn` is a day in that period, usually the day before this period starts. Null
+ * counts it on its own date again. The bank date is unchanged; transfers move both legs.
+ */
+export async function setBudgetDate(
+  store: FinanceStore,
+  id: string,
+  countOn: IsoDate | null,
+  clock: Clock = systemClock,
+): Promise<void> {
+  const legs = await withTransferLegs(store, id);
+  if (countOn && legs.some((l) => countOn >= l.date)) {
+    throw new DomainError('It can only be counted in an earlier period.');
+  }
+  const now = clock.now();
+  await store.atomic(() =>
+    store.transactions.bulkPut(
+      legs.map((l) => ({ ...l, tags: withBudgetDate(l.tags, countOn), updatedAt: now })),
+    ),
+  );
 }
