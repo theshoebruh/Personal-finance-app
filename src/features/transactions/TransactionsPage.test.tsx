@@ -8,7 +8,7 @@ import type { FinanceStore } from '@/data/repositories/types';
 import { todayInAppZone } from '@/domain/dates';
 import { createAccount } from '@/services/accountsService';
 import { ensureInitialised } from '@/services/settingsService';
-import { createTransaction } from '@/services/transactionsService';
+import { createTransaction, createTransfer } from '@/services/transactionsService';
 
 let n = 0;
 let db: FinanceDb;
@@ -81,4 +81,37 @@ it('explains the real reason when a mixed selection can’t take a category', as
   const panel = screen.getByRole('region', { name: 'Bulk actions' });
   expect(within(panel).getByText(/selected income and spending together/)).toBeInTheDocument();
   expect(groupLabels(within(panel).getByLabelText('Category for selected'))).toEqual([]);
+});
+
+it('Edit scrolls to the form it opens at the top of the page', async () => {
+  const today = todayInAppZone();
+  const [main] = await store.accounts.list();
+  const savings = await createAccount(store, {
+    name: 'Emergency Savings',
+    type: 'savings',
+    workspace: 'personal',
+    openingBalanceCents: 0,
+    openingBalanceDate: today,
+    includeInSpendable: false,
+  });
+  await createTransfer(store, {
+    fromAccountId: main!.id,
+    toAccountId: savings.id,
+    date: today,
+    amountCents: 240_000,
+  });
+  const scrolled: Element[] = [];
+  const original = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = function (this: Element) {
+    scrolled.push(this);
+  };
+  try {
+    const user = userEvent.setup({ delay: null });
+    render(<App db={db} store={store} initialPath="/transactions" />);
+    await user.click(await screen.findByRole('button', { name: 'Edit Transfer from Main' }));
+    const form = await screen.findByRole('heading', { name: 'Edit transfer' });
+    expect(scrolled.some((el) => el.contains(form))).toBe(true);
+  } finally {
+    Element.prototype.scrollIntoView = original;
+  }
 });

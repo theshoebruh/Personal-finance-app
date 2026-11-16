@@ -3037,3 +3037,11 @@ html[data-nav] .main > * {
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-hairline);
 }
+
+/* Activity: forms opened from a row scroll here; keep clear of the sticky header. */
+.panel-anchor {
+  scroll-margin-top: calc(var(--safe-top) + 72px);
+}
+.panel-anchor:empty {
+  display: none;
+}
