@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { useApp, useFinanceData } from '@/app/AppContext';
@@ -48,6 +48,17 @@ export function TransactionsPage() {
   useEffect(() => {
     if (newParam) setPanel(panelFromParam(newParam));
   }, [newParam]);
+  // Forms open at the top of the page; bring the one just opened into view (Edit is tapped far
+  // down the list) and put focus in it.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const panelKey = panel ? (panel.kind === 'edit' ? `edit-${panel.txn.id}` : panel.kind) : null;
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!panelKey || !el) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView?.({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+    el.querySelector<HTMLElement>('input, select, textarea')?.focus({ preventScroll: true });
+  }, [panelKey]);
   const [search, setSearch] = useState('');
   const [accountId, setAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -246,26 +257,28 @@ export function TransactionsPage() {
         </Card>
       )}
 
-      {panel?.kind === 'new' && (
-        <TransactionForm
-          accounts={data.accounts}
-          categories={data.categories}
-          editing={null}
-          defaultAccountId={accountId || undefined}
-          today={today}
-          onDone={done}
-          onCancel={() => setPanel(null)}
-        />
-      )}
-      {panel?.kind === 'transfer' && (
-        <TransferForm
-          accounts={data.accounts}
-          today={today}
-          onDone={done}
-          onCancel={() => setPanel(null)}
-        />
-      )}
-      {panel?.kind === 'edit' && editPanel(panel.txn)}
+      <div ref={panelRef} className="panel-anchor">
+        {panel?.kind === 'new' && (
+          <TransactionForm
+            accounts={data.accounts}
+            categories={data.categories}
+            editing={null}
+            defaultAccountId={accountId || undefined}
+            today={today}
+            onDone={done}
+            onCancel={() => setPanel(null)}
+          />
+        )}
+        {panel?.kind === 'transfer' && (
+          <TransferForm
+            accounts={data.accounts}
+            today={today}
+            onDone={done}
+            onCancel={() => setPanel(null)}
+          />
+        )}
+        {panel?.kind === 'edit' && editPanel(panel.txn)}
+      </div>
 
       {hasAccounts && (
         <Card>
