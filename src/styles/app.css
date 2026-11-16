@@ -3030,3 +3030,10 @@ html[data-nav] .main > * {
 .field-inline .select-sm {
   margin-top: 0;
 }
+
+/* Group page: savings counted in last period. */
+.moved-back {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-hairline);
+}

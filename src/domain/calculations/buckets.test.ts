@@ -220,3 +220,25 @@ describe('goals as Rand amounts', () => {
     expect(line(s, GROUP_IDS.needs).targetCents).toBe(500_000);
   });
 });
+
+describe('savings made from last period’s leftover', () => {
+  it('counts in the period it is marked for, not the one it happened in', () => {
+    const sweep = { ...spend(246_177, 'savings', '2026-03-01'), tags: ['bd:2026-02-28'] };
+    const s = summary([
+      income(1_000_000, 'salary'),
+      spend(240_000, 'savings', '2026-03-01'),
+      sweep,
+    ]);
+    expect(line(s, GROUP_IDS.savings).actualCents).toBe(240_000);
+    expect(s.leftCents).toBe(760_000);
+    const feb = groupSummary({
+      groups,
+      categories,
+      accounts: [main],
+      transactions: [sweep],
+      start: '2026-02-01',
+      end: '2026-02-28',
+    });
+    expect(line(feb, GROUP_IDS.savings).actualCents).toBe(246_177);
+  });
+});
