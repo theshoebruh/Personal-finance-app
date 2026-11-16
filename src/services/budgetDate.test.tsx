@@ -112,3 +112,53 @@ it('marks a savings transfer as last period’s leftover from the Savings page',
   expect(await screen.findByText(/counts in this period again/)).toBeInTheDocument();
   expect((await store.transactions.get(sweep.id))?.tags).toEqual([]);
 });
+
+it('lists transfers into a savings account on the Savings page, and can move them back', async () => {
+  await updateSettings(store, { budgetPeriodMode: 'calendar_month' });
+  const today = todayInAppZone();
+  const start = `${today.slice(0, 8)}01`;
+  const savings = await createAccount(store, {
+    name: 'Emergency Savings',
+    type: 'savings',
+    workspace: 'personal',
+    openingBalanceCents: 0,
+    openingBalanceDate: '2026-01-01',
+    includeInSpendable: false,
+  });
+  await createTransaction(store, {
+    accountId: main,
+    date: start,
+    description: 'Salary',
+    amountCents: 1_200_000,
+    type: 'income',
+    categoryId: 'cat-salary',
+  });
+  const move = (cents: number, description: string) =>
+    createTransfer(store, {
+      fromAccountId: main,
+      toAccountId: savings.id,
+      date: start,
+      amountCents: cents,
+      description,
+    });
+  await move(240_000, 'Planned saving');
+  const [out, into] = await move(246_177, 'Leftover sweep');
+
+  const user = userEvent.setup({ delay: null });
+  render(<App db={db} store={store} initialPath="/group/grp-savings" />);
+  const facts = (await screen.findByText('Status')).closest('dl') as HTMLElement;
+  expect(await within(facts).findByText(/4 861,77/)).toBeInTheDocument();
+  expect(screen.getAllByText('Moved to Emergency Savings')).toHaveLength(2);
+
+  await user.click(
+    await screen.findByRole('button', { name: 'Leftover sweep: from last period’s leftover' }),
+  );
+  expect(await screen.findByText(/now counts in last period/)).toBeInTheDocument();
+  expect(await within(facts).findByText(/2 400,00/)).toBeInTheDocument();
+  for (const leg of [out, into]) {
+    expect((await store.transactions.get(leg.id))?.tags).toContain(`bd:${addDays(start, -1)}`);
+  }
+  expect(
+    await screen.findByRole('button', { name: 'Count Leftover sweep in this period' }),
+  ).toBeInTheDocument();
+});
