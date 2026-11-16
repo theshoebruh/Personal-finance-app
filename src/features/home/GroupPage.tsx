@@ -89,10 +89,37 @@ export function GroupPage() {
     return !!cat && groupIdForCategory(cat, spendingIds) === g.id;
   };
   type Txn = (typeof data.transactions)[number];
+  const isSavings = bucket === GROUP_IDS.savings;
+  // Savings also counts transfers from a spendable account into a savings account; their
+  // outgoing side is listed here (as the Savings total counts them).
+  const intoSavingsAccount = new Map<string, string>();
+  if (isSavings) {
+    for (const t of data.transactions) {
+      const acc = accountsById.get(t.accountId);
+      if (
+        t.type === 'transfer' &&
+        t.transferId &&
+        t.amountCents > 0 &&
+        acc &&
+        !acc.includeInSpendable
+      ) {
+        intoSavingsAccount.set(t.transferId, acc.name);
+      }
+    }
+  }
+  const isSavingsTransfer = (t: Txn) =>
+    isSavings &&
+    t.type === 'transfer' &&
+    !!t.transferId &&
+    isActual(t) &&
+    t.amountCents < 0 &&
+    !!accountsById.get(t.accountId)?.includeInSpendable &&
+    intoSavingsAccount.has(t.transferId);
   const listable = (t: Txn) =>
-    (isActual(t) || isPending(t)) &&
-    (t.type === 'expense' || t.type === 'refund' || t.type === 'income') &&
-    inThisGroup(t.categoryId);
+    isSavingsTransfer(t) ||
+    ((isActual(t) || isPending(t)) &&
+      (t.type === 'expense' || t.type === 'refund' || t.type === 'income') &&
+      inThisGroup(t.categoryId));
   const txns = isLeftover
     ? []
     : data.transactions.filter((t) => {
@@ -100,7 +127,6 @@ export function GroupPage() {
         return listable(t) && d >= period.start && d <= period.end;
       });
   // Savings made early this period out of last period's leftover can be counted there instead.
-  const isSavings = bucket === GROUP_IDS.savings;
   const lastPeriodDay = addDays(period.start, -1);
   const canMoveBack = (t: Txn) =>
     isSavings && t.amountCents < 0 && t.date >= period.start && diffDays(period.start, t.date) <= 7;
@@ -294,33 +320,41 @@ export function GroupPage() {
                           </>
                         )}
                       </div>
-                      <label className="visually-hidden" htmlFor={`cat-${t.id}`}>
-                        Category for {t.description}
-                      </label>
-                      <select
-                        id={`cat-${t.id}`}
-                        className="select-sm"
-                        value={t.categoryId ?? ''}
-                        onChange={(e) =>
-                          void run(
-                            () =>
-                              updateTransaction(store, t.id, {
-                                categoryId: e.target.value || null,
-                                ...(t.status === 'needs_review'
-                                  ? { status: 'posted' as const }
-                                  : {}),
-                              }),
-                            `${t.description} moved to ${categoriesById.get(e.target.value)?.name ?? 'no category'}`,
-                          )
-                        }
-                      >
-                        <option value="">No category</option>
-                        <CategoryOptions
-                          categories={data.categories}
-                          workspace={t.workspace}
-                          kind={t.type === 'income' ? 'income' : 'expense'}
-                        />
-                      </select>
+                      {t.type === 'transfer' ? (
+                        <div className="meta">
+                          Moved to {intoSavingsAccount.get(t.transferId ?? '') ?? 'savings'}
+                        </div>
+                      ) : (
+                        <>
+                          <label className="visually-hidden" htmlFor={`cat-${t.id}`}>
+                            Category for {t.description}
+                          </label>
+                          <select
+                            id={`cat-${t.id}`}
+                            className="select-sm"
+                            value={t.categoryId ?? ''}
+                            onChange={(e) =>
+                              void run(
+                                () =>
+                                  updateTransaction(store, t.id, {
+                                    categoryId: e.target.value || null,
+                                    ...(t.status === 'needs_review'
+                                      ? { status: 'posted' as const }
+                                      : {}),
+                                  }),
+                                `${t.description} moved to ${categoriesById.get(e.target.value)?.name ?? 'no category'}`,
+                              )
+                            }
+                          >
+                            <option value="">No category</option>
+                            <CategoryOptions
+                              categories={data.categories}
+                              workspace={t.workspace}
+                              kind={t.type === 'income' ? 'income' : 'expense'}
+                            />
+                          </select>
+                        </>
+                      )}
                       {canMoveBack(t) && (
                         <button
                           type="button"
