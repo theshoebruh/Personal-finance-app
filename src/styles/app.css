@@ -3045,3 +3045,52 @@ html[data-nav] .main > * {
 .panel-anchor:empty {
   display: none;
 }
+
+/* Ask: questions answered by Claude. */
+.ask-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.ask-suggestions .btn {
+  white-space: normal;
+  text-align: left;
+}
+.ask-thread {
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.ask-turn {
+  display: grid;
+  gap: var(--space-2);
+}
+.ask-question {
+  justify-self: end;
+  max-width: 85%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-accent-bg);
+  color: var(--color-text);
+}
+.ask-answer {
+  max-width: 100%;
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ask-form {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.ask-form input {
+  flex: 1;
+  min-width: 0;
+}
+.ask-footer {
+  margin-top: var(--space-4);
+}

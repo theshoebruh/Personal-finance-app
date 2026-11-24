@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Dexie from 'dexie';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import { FunctionsHttpError, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { App } from '@/app/App';
-import { SyncContext, type SyncContextValue } from '@/app/SyncContext';
+import { FunctionCallError, SyncContext, type SyncContextValue } from '@/app/SyncContext';
 import { DB_NAME, FinanceDb, userDbName } from '@/data/local-db/db';
 import { createDexieStore } from '@/data/repositories/dexieStore';
 import type { FinanceStore } from '@/data/repositories/types';
@@ -191,8 +191,21 @@ function SyncedApp({
         await Dexie.delete(DB_NAME);
         setLocalOnlyRecordCount(0);
       },
+      async callFunction(name, body) {
+        const { data, error } = await client.functions.invoke(name, { body: body as object });
+        if (!error) return data;
+        if (error instanceof FunctionsHttpError) {
+          const res = error.context as Response;
+          const code = await res
+            .json()
+            .then((j: { error?: unknown }) => (typeof j.error === 'string' ? j.error : null))
+            .catch(() => null);
+          throw new FunctionCallError(res.status, code);
+        }
+        throw new FunctionCallError(0, null);
+      },
     };
-  }, [boot, status, email, signOut, localOnlyRecordCount]);
+  }, [boot, client, status, email, signOut, localOnlyRecordCount]);
 
   if (boot.phase === 'loading') {
     return (

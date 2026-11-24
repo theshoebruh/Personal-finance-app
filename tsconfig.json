@@ -29,6 +29,7 @@
     "src",
     "config",
     "supabase/tests",
+    "supabase/functions/ask/tools.ts",
     "vite.config.ts",
     "vitest.setup.ts",
     "vitest.db.config.ts"
