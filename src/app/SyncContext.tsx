@@ -11,6 +11,18 @@ export interface SyncContextValue {
   localOnlyRecordCount: number;
   copyLocalOnlyData(): Promise<void>;
   discardLocalOnlyData(): Promise<void>;
+  /** Calls a Supabase Edge Function as the signed-in user; throws FunctionCallError on failure. */
+  callFunction(name: string, body: unknown): Promise<unknown>;
+}
+
+/** A failed Edge Function call: `status` is the HTTP status, or 0 when it never got an answer. */
+export class FunctionCallError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string | null,
+  ) {
+    super(`Function call failed (${status}${code ? `, ${code}` : ''})`);
+  }
 }
 
 export const SyncContext = createContext<SyncContextValue | null>(null);

@@ -17,6 +17,7 @@ export const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { to: '/transactions', label: 'Activity', icon: 'activity' },
       { to: '/categories', label: 'Categories', icon: 'budgets' },
       { to: '/reports', label: 'Reports', icon: 'reports' },
+      { to: '/ask', label: 'Ask', icon: 'chat' },
     ],
   },
   {
@@ -33,6 +34,12 @@ export const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
 export const MORE_GROUPS: NavItem[][] = [
   [
     { to: '/reports', label: 'Reports', icon: 'reports', hint: 'Charts of income and spending' },
+    {
+      to: '/ask',
+      label: 'Ask',
+      icon: 'chat',
+      hint: 'Questions about your money, answered by Claude',
+    },
     { to: '/accounts', label: 'Accounts', icon: 'accounts', hint: 'Balances and opening dates' },
   ],
   [
@@ -56,6 +63,7 @@ export const TAB_ITEMS: NavItem[] = [
 /** Where the phone back link goes from each page that isn't a tab. */
 export const BACK_LINKS: Record<string, { to: string; label: string }> = {
   '/reports': { to: '/more', label: 'More' },
+  '/ask': { to: '/more', label: 'More' },
   '/accounts': { to: '/more', label: 'More' },
   '/settings': { to: '/more', label: 'More' },
   '/import': { to: '/', label: 'Home' },
@@ -67,4 +75,12 @@ export const BACK_LINKS: Record<string, { to: string; label: string }> = {
 };
 
 /** Paths that light up the More tab. */
-export const MORE_PATHS = ['/more', '/reports', '/accounts', '/settings', '/goals', '/business'];
+export const MORE_PATHS = [
+  '/more',
+  '/reports',
+  '/ask',
+  '/accounts',
+  '/settings',
+  '/goals',
+  '/business',
+];
