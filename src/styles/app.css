@@ -3094,3 +3094,48 @@ html[data-nav] .main > * {
 .ask-footer {
   margin-top: var(--space-4);
 }
+
+/* Subscriptions & bills. */
+.sub-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.sub-row .title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sub-row[data-state='late'] .title {
+  color: var(--color-warning);
+}
+.sub-row[data-state='paused'] {
+  opacity: 0.6;
+}
+.sub-group {
+  white-space: nowrap;
+}
+.sub-actions {
+  margin-top: var(--space-1);
+}
+.sub-home-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  color: inherit;
+  text-decoration: none;
+}
+.sub-home-body {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+}
+.sub-home-title {
+  font-weight: 600;
+}

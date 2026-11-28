@@ -16,6 +16,7 @@ export const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { to: '/', label: 'Home', icon: 'home' },
       { to: '/transactions', label: 'Activity', icon: 'activity' },
       { to: '/categories', label: 'Categories', icon: 'budgets' },
+      { to: '/subscriptions', label: 'Subscriptions', icon: 'repeat' },
       { to: '/reports', label: 'Reports', icon: 'reports' },
       { to: '/ask', label: 'Ask', icon: 'chat' },
     ],
@@ -33,6 +34,12 @@ export const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
 /** Pages listed on the phone's More page, in groups. */
 export const MORE_GROUPS: NavItem[][] = [
   [
+    {
+      to: '/subscriptions',
+      label: 'Subscriptions',
+      icon: 'repeat',
+      hint: 'Subscriptions and bills, and whether they’re paid',
+    },
     { to: '/reports', label: 'Reports', icon: 'reports', hint: 'Charts of income and spending' },
     {
       to: '/ask',
@@ -64,6 +71,7 @@ export const TAB_ITEMS: NavItem[] = [
 export const BACK_LINKS: Record<string, { to: string; label: string }> = {
   '/reports': { to: '/more', label: 'More' },
   '/ask': { to: '/more', label: 'More' },
+  '/subscriptions': { to: '/more', label: 'More' },
   '/accounts': { to: '/more', label: 'More' },
   '/settings': { to: '/more', label: 'More' },
   '/import': { to: '/', label: 'Home' },
@@ -79,6 +87,7 @@ export const MORE_PATHS = [
   '/more',
   '/reports',
   '/ask',
+  '/subscriptions',
   '/accounts',
   '/settings',
   '/goals',

@@ -5,23 +5,13 @@ import { isActual, isPending } from '@/domain/calculations/balances';
 import { normaliseText } from '@/domain/calculations/recurring';
 import { addMonths, endOfMonth, startOfMonth, type IsoDate } from '@/domain/dates';
 import type { Transaction } from '@/domain/models';
+import { cleanDescription } from '@/domain/text';
 import type { AskToolName } from '../../../supabase/functions/ask/tools';
 
 /** What Claude sees as a rand amount: 1234.56 (spending positive unless signed). */
 const rand = (cents: number) => Math.round(cents) / 100;
 
-/**
- * Description as sent to Claude: card numbers, long digit runs and the "(Pending)" marker removed,
- * so nothing that identifies an account or card leaves the phone.
- */
-export function cleanDescription(description: string): string {
-  return description
-    .replace(/^\(pending\)\s*/i, '')
-    .replace(/\(card\s*\d+\)/gi, '')
-    .replace(/\d{4,}/g, '…')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+export { cleanDescription };
 
 export class AskToolError extends Error {}
 

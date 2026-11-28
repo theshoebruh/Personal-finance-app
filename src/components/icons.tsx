@@ -17,7 +17,8 @@ export type IconName =
   | 'chevron-right'
   | 'check'
   | 'close'
-  | 'chat';
+  | 'chat'
+  | 'repeat';
 
 const PATHS: Record<IconName, string> = {
   home: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
@@ -39,6 +40,7 @@ const PATHS: Record<IconName, string> = {
   check: 'M5 12.5l4.5 4.5L19 7.5',
   close: 'M6 6l12 12M18 6L6 18',
   chat: 'M4 5h16v11H9l-5 4z M8 9h8 M8 12h5',
+  repeat: 'M17 2l3 3-3 3 M4 11V9a4 4 0 0 1 4-4h12 M7 22l-3-3 3-3 M20 13v2a4 4 0 0 1-4 4H4',
 };
 
 export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
