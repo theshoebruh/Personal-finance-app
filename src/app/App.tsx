@@ -13,6 +13,7 @@ import { BusinessPage } from '@/features/business/BusinessPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { ImportPage } from '@/features/imports/ImportPage';
+import { SubscriptionsPage } from '@/features/subscriptions/SubscriptionsPage';
 import { AskPage } from '@/features/ask/AskPage';
 import { MorePage } from '@/features/more/MorePage';
 import { HomePage } from '@/features/home/HomePage';
@@ -35,6 +36,7 @@ function AppRoutes() {
         <Route path="business" element={<BusinessPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="ask" element={<AskPage />} />
+        <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="import" element={<ImportPage />} />
         <Route path="more" element={<MorePage />} />

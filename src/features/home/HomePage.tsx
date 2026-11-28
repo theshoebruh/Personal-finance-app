@@ -11,6 +11,7 @@ import { openGroup, shouldAnimateClick } from '@/app/viewTransition';
 import { PageHeader } from '@/components/PageHeader';
 import { Donut, Ring, fraction, type DonutSegment, type RingTone } from '@/components/charts';
 import { UNCATEGORISED_COLOUR, groupColour, groupHint, useBuckets } from './useBuckets';
+import { SubscriptionsCard } from '../subscriptions/SubscriptionsCard';
 
 /**
  * Rings always use the group's own colour so the groups are easy to tell apart; whether a
@@ -346,6 +347,8 @@ export function HomePage() {
         ))}
         {leftover && <GroupCard line={leftover} mode={summary.goalMode} />}
       </div>
+
+      <SubscriptionsCard data={data} period={period} today={today} />
 
       {summary.incomeByCategory.length > 0 && (
         <Card title="Income">
